@@ -85,18 +85,28 @@ function listEligibleUsers_() {
 
 function getUserPhoto_(email) {
   try {
-    const photo = AdminDirectory.Users.Photos.get(email);
-    if (!photo || !photo.photoData) return null;
+    const user = AdminDirectory.Users.get(email, { projection: 'full' });
+    const photoUrl = user.thumbnailPhotoUrl;
+    if (!photoUrl) return null;
 
-    let encoded = String(photo.photoData)
-      .replace(/-/g, '+')
-      .replace(/_/g, '/')
-      .replace(/\*/g, '=')
-      .replace(/\./g, '=');
-    while (encoded.length % 4 !== 0) encoded += '=';
+    const response = UrlFetchApp.fetch(photoUrl, {
+      method: 'get',
+      followRedirects: true,
+      muteHttpExceptions: true,
+      headers: {
+        'Authorization': 'Bearer ' + ScriptApp.getOAuthToken()
+      }
+    });
 
-    const bytes = Utilities.base64Decode(encoded);
-    const mime = photo.mimeType || 'image/jpeg';
+    const code = response.getResponseCode();
+    if (code < 200 || code >= 300) {
+      console.log('Profile photo fetch failed for ' + email + ': HTTP ' + code);
+      return null;
+    }
+
+    const blob = response.getBlob();
+    const bytes = blob.getBytes();
+    const mime = blob.getContentType() || 'image/jpeg';
     let ext = 'jpg';
     if (mime.indexOf('png') >= 0) ext = 'png';
     else if (mime.indexOf('webp') >= 0) ext = 'webp';
