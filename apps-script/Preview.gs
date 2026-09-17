@@ -75,15 +75,6 @@ function buildAllSignaturesPreview_() {
 }
 
 function doGet() {
-  const viewer = String(Session.getActiveUser().getEmail() || '').toLowerCase();
-  const allowed = String(ZP_CONFIG.TEST_USER || '').toLowerCase();
-
-  if (viewer && viewer !== allowed) {
-    return HtmlService.createHtmlOutput(
-      '<!doctype html><meta charset="utf-8"><div style="font:16px Arial,sans-serif;padding:30px;">Access denied.</div>'
-    );
-  }
-
   return HtmlService.createHtmlOutput(buildAllSignaturesPreview_())
     .setTitle('Zdrowa Polska — podgląd podpisów')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
