@@ -10,6 +10,10 @@ const SITE_DIR = path.join(ROOT, 'site');
 
 const BLUE = '#0B6FA4';
 const GRAY = '#555555';
+const BASE_URL = 'https://zdrowapolska.github.io/zdrowa-polska-signatures';
+
+const DISCLAIMER_PL = 'Niniejsza wiadomość wraz z załącznikami zawiera ściśle poufne i prawnie chronione informacje. Jeśli są Państwo jej omyłkowym odbiorcą, prosimy o jej usunięcie i niezwłoczne poinformowanie nadawcy. Kopiowanie, ujawnianie lub rozpowszechnianie materiału zawartego w tym e-mailu jest zabronione.';
+const DISCLAIMER_EN = 'This email with all its attachments is confidential and may be subject to legal privilege. If it is not intended for you, please notify the sender immediately and delete this e-mail. Any unauthorized copying, disclosure or distribution of the material in this e-mail is strictly forbidden.';
 
 function esc(s='') {
   return String(s)
@@ -17,7 +21,7 @@ function esc(s='') {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
+    .replaceAll("'", '&#39;');
 }
 
 function dataUri(mime, buf) {
@@ -28,7 +32,9 @@ async function ensureCleanSite() {
   await fs.rm(SITE_DIR, { recursive: true, force: true });
   await fs.mkdir(path.join(SITE_DIR, 'signatures'), { recursive: true });
   await fs.mkdir(path.join(SITE_DIR, 'icons'), { recursive: true });
-  await fs.mkdir(path.join(SITE_DIR, 'go'), { recursive: true });
+  await fs.mkdir(path.join(SITE_DIR, 'photos'), { recursive: true });
+  await fs.mkdir(path.join(SITE_DIR, 'media'), { recursive: true });
+  await fs.mkdir(path.join(SITE_DIR, 'admin-footer'), { recursive: true });
 }
 
 async function readOptional(file) {
@@ -75,6 +81,55 @@ async function signatureSvg(user, photoBuf, photoMime, logoBuf) {
 </svg>`;
 }
 
+function adminFooterHtml(user, slug, hasPhoto) {
+  const photoUrl = hasPhoto ? `${BASE_URL}/photos/${slug}.png` : `${BASE_URL}/media/neutral-avatar.png`;
+  const logoUrl = `${BASE_URL}/media/logo.png`;
+  const linkedinIcon = `${BASE_URL}/icons/linkedin.png`;
+  const facebookIcon = `${BASE_URL}/icons/facebook.png`;
+  const youtubeIcon = `${BASE_URL}/icons/youtube.png`;
+  const websiteHref = /^https?:\/\//i.test(user.website || '') ? user.website : `https://${user.website}`;
+
+  const titleRow = user.jobTitle
+    ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:20px;color:${GRAY};">${esc(user.jobTitle)}</div>`
+    : '';
+  const phoneRow = user.phone
+    ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:${GRAY};">Tel: ${esc(user.phone)}</div>`
+    : '';
+  const linkedin = user.linkedin
+    ? `<a href="${esc(user.linkedin)}" style="text-decoration:none;"><img src="${linkedinIcon}" width="28" height="28" alt="LinkedIn" style="display:inline-block;border:0;vertical-align:middle;margin-right:6px;"></a>`
+    : `<img src="${linkedinIcon}" width="28" height="28" alt="LinkedIn" style="display:inline-block;border:0;vertical-align:middle;margin-right:6px;">`;
+
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Email footer ${esc(user.fullName)}</title></head>
+<body style="margin:0;padding:20px;background:#fff;">
+<div id="signature" style="max-width:760px;">
+  <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+    <tr>
+      <td valign="top" style="width:185px;padding:0 22px 0 0;text-align:center;">
+        <img src="${photoUrl}" width="100" height="100" alt="${esc(user.fullName)}" style="display:block;border:0;margin:0 auto 9px auto;">
+        <img src="${logoUrl}" width="160" alt="Zdrowa Polska" style="display:block;border:0;margin:0 auto;">
+      </td>
+      <td valign="top" style="border-left:3px solid ${BLUE};padding:2px 0 0 28px;">
+        <div style="font-family:Arial,Helvetica,sans-serif;font-size:22px;line-height:27px;font-weight:700;color:#111;">${esc(user.fullName)}</div>
+        ${titleRow}
+        <div style="font-family:Arial,Helvetica,sans-serif;font-size:17px;line-height:26px;font-weight:700;color:${BLUE};margin:2px 0 7px 0;">${esc(user.company)}</div>
+        ${phoneRow}
+        <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:${GRAY};">Email: <a href="mailto:${esc(user.email)}" style="color:${BLUE};text-decoration:none;">${esc(user.email)}</a></div>
+        <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:${GRAY};">Strona: <a href="${esc(websiteHref)}" style="color:${BLUE};text-decoration:none;">${esc(user.website)}</a></div>
+      </td>
+    </tr>
+  </table>
+  <div style="border-top:1px solid #d9e1e5;margin:10px 0 8px 0;padding-top:7px;">
+    ${linkedin}
+    <img src="${facebookIcon}" width="28" height="28" alt="Facebook" style="display:inline-block;border:0;vertical-align:middle;margin-right:6px;">
+    <img src="${youtubeIcon}" width="28" height="28" alt="YouTube" style="display:inline-block;border:0;vertical-align:middle;">
+  </div>
+  <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:15px;color:#555;max-width:760px;">${esc(DISCLAIMER_PL)}</div>
+  <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:15px;color:#555;max-width:760px;margin-top:8px;">${esc(DISCLAIMER_EN)}</div>
+</div>
+</body></html>`;
+}
+
 async function buildUser(file) {
   const slug = path.basename(file, '.json');
   const user = JSON.parse(await fs.readFile(path.join(DATA_DIR, file), 'utf8'));
@@ -84,26 +139,42 @@ async function buildUser(file) {
     photoBuf = await readOptional(p);
     if (photoBuf) photoMime = await imageMime(p);
   }
+
   const logoBuf = await fs.readFile(path.join(ASSETS_DIR, 'logo.svg'));
   const svg = await signatureSvg(user, photoBuf, photoMime, logoBuf);
   await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toFile(path.join(SITE_DIR, 'signatures', `${slug}.png`));
 
-  if (user.linkedin) {
-    const goDir = path.join(SITE_DIR, 'go', slug, 'linkedin');
-    await fs.mkdir(goDir, { recursive: true });
-    const redirect = `<!doctype html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="0;url=${esc(user.linkedin)}"><link rel="canonical" href="${esc(user.linkedin)}"></head><body><a href="${esc(user.linkedin)}">Continue</a></body></html>`;
-    await fs.writeFile(path.join(goDir, 'index.html'), redirect, 'utf8');
+  if (photoBuf) {
+    const mask = Buffer.from('<svg width="200" height="200"><circle cx="100" cy="100" r="100" fill="white"/></svg>');
+    await sharp(photoBuf)
+      .resize(200, 200, { fit: 'cover', position: 'centre' })
+      .composite([{ input: mask, blend: 'dest-in' }])
+      .png({ compressionLevel: 9 })
+      .toFile(path.join(SITE_DIR, 'photos', `${slug}.png`));
   }
+
+  const footerDir = path.join(SITE_DIR, 'admin-footer', slug);
+  await fs.mkdir(footerDir, { recursive: true });
+  await fs.writeFile(path.join(footerDir, 'index.html'), adminFooterHtml(user, slug, !!photoBuf), 'utf8');
+}
+
+async function buildSharedMedia() {
+  const logoSvg = await fs.readFile(path.join(ASSETS_DIR, 'logo.svg'));
+  await sharp(logoSvg).resize({ width: 320 }).png({ compressionLevel: 9 }).toFile(path.join(SITE_DIR, 'media', 'logo.png'));
+
+  const neutral = await fs.readFile(path.join(ASSETS_DIR, 'neutral-avatar.svg'));
+  await sharp(neutral).resize(200, 200).png({ compressionLevel: 9 }).toFile(path.join(SITE_DIR, 'media', 'neutral-avatar.png'));
 }
 
 async function buildIcons() {
   for (const name of ['linkedin', 'facebook', 'youtube']) {
     const svg = await fs.readFile(path.join(ASSETS_DIR, 'icons', `${name}.svg`));
-    await sharp(svg).resize(32, 32).png().toFile(path.join(SITE_DIR, 'icons', `${name}.png`));
+    await sharp(svg).resize(56, 56).png().toFile(path.join(SITE_DIR, 'icons', `${name}.png`));
   }
 }
 
 await ensureCleanSite();
+await buildSharedMedia();
 await buildIcons();
 const files = (await fs.readdir(DATA_DIR)).filter(f => f.endsWith('.json')).sort();
 for (const file of files) await buildUser(file);
