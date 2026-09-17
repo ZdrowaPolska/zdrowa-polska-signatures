@@ -45,38 +45,35 @@ async function coreSvg(user, photoBuf, photoMime, logoBuf) {
   const job = user.jobTitle
     ? `<text x="205" y="53" font-family="Arial,Helvetica,sans-serif" font-size="15" fill="${GRAY}">${esc(user.jobTitle)}</text>`
     : '';
-  const phone = user.phone
-    ? `<text x="205" y="116" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="${GRAY}">Tel: ${esc(user.phone)}</text>`
-    : '';
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="248" viewBox="0 0 600 124">
-  <rect width="600" height="124" fill="#ffffff"/>
-  <defs><clipPath id="p"><circle cx="77" cy="43" r="40"/></clipPath></defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="208" viewBox="0 0 600 104">
+  <rect width="600" height="104" fill="#ffffff"/>
+  <defs><clipPath id="p"><circle cx="77" cy="42" r="39"/></clipPath></defs>
   ${photo
-    ? `<image href="${photo}" x="37" y="3" width="80" height="80" preserveAspectRatio="xMidYMid slice" clip-path="url(#p)"/>`
-    : `<circle cx="77" cy="43" r="40" fill="#EEF3F3"/><circle cx="77" cy="34" r="14" fill="#9BAEAF"/><path d="M49 74c4-19 14-29 28-29s24 10 28 29" fill="#9BAEAF"/>`
+    ? `<image href="${photo}" x="38" y="3" width="78" height="78" preserveAspectRatio="xMidYMid slice" clip-path="url(#p)"/>`
+    : `<circle cx="77" cy="42" r="39" fill="#EEF3F3"/><circle cx="77" cy="33" r="14" fill="#9BAEAF"/><path d="M50 72c4-18 14-28 27-28s23 10 27 28" fill="#9BAEAF"/>`
   }
-  <image href="${logo}" x="24" y="88" width="112" height="33" preserveAspectRatio="xMidYMid meet"/>
-  <rect x="175" y="4" width="2.5" height="116" fill="${BLUE}"/>
+  <image href="${logo}" x="25" y="78" width="108" height="24" preserveAspectRatio="xMidYMid meet"/>
+  <rect x="175" y="4" width="2.5" height="96" fill="${BLUE}"/>
   <text x="205" y="28" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#111111">${esc(user.fullName)}</text>
   ${job}
   <text x="205" y="81" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="${BLUE}">${esc(user.company)}</text>
-  ${phone}
 </svg>`;
 }
 
-function contactRowSvg(label, value) {
+function contactRowSvg(label, value, valueColor=BLUE) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="40" viewBox="0 0 600 20">
   <rect width="600" height="20" fill="#ffffff"/>
-  <text x="205" y="14.5" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="${GRAY}">${esc(label)} <tspan fill="${BLUE}">${esc(value)}</tspan></text>
+  <text x="205" y="14.5" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="${GRAY}">${esc(label)} <tspan fill="${valueColor}">${esc(value)}</tspan></text>
 </svg>`;
 }
 
 function pageHtml(user, slug) {
   const websiteHref = /^https?:\/\//i.test(user.website || '') ? user.website : `https://${user.website}`;
   const coreUrl = `${BASE_URL}/hybrid/${slug}/core.png`;
+  const phoneUrl = `${BASE_URL}/hybrid/${slug}/phone.png`;
   const emailUrl = `${BASE_URL}/hybrid/${slug}/email.png`;
   const websiteUrl = `${BASE_URL}/hybrid/${slug}/website.png`;
   const linkedinIcon = `${BASE_URL}/icons/linkedin.png`;
@@ -85,10 +82,14 @@ function pageHtml(user, slug) {
   const linkedin = user.linkedin
     ? `<a href="${esc(user.linkedin)}"><img src="${linkedinIcon}" width="28" height="28" alt="LinkedIn" style="border:0;vertical-align:middle;margin-right:6px;"></a>`
     : `<img src="${linkedinIcon}" width="28" height="28" alt="LinkedIn" style="border:0;vertical-align:middle;margin-right:6px;">`;
+  const phoneRow = user.phone
+    ? `<div><a href="tel:${esc(String(user.phone).replace(/[^+\d]/g,''))}" style="text-decoration:none;"><img src="${phoneUrl}" width="600" height="20" alt="Tel: ${esc(user.phone)}" style="display:block;border:0;"></a></div>`
+    : '';
 
   const signature = `
 <div id="signature" style="font-family:Arial,Helvetica,sans-serif;color:${GRAY};max-width:650px;">
-  <div><img src="${coreUrl}" width="600" height="124" alt="${esc(user.fullName)}" style="display:block;border:0;"></div>
+  <div><img src="${coreUrl}" width="600" height="104" alt="${esc(user.fullName)}" style="display:block;border:0;"></div>
+  ${phoneRow}
   <div><a href="mailto:${esc(user.email)}"><img src="${emailUrl}" width="600" height="20" alt="Email: ${esc(user.email)}" style="display:block;border:0;"></a></div>
   <div><a href="${esc(websiteHref)}"><img src="${websiteUrl}" width="600" height="20" alt="Strona: ${esc(user.website)}" style="display:block;border:0;"></a></div>
   <div style="border-top:1px solid #d9e1e5;margin-top:6px;padding-top:6px;">${linkedin}<img src="${facebookIcon}" width="28" height="28" alt="Facebook" style="border:0;vertical-align:middle;margin-right:6px;"><img src="${youtubeIcon}" width="28" height="28" alt="YouTube" style="border:0;vertical-align:middle;"></div>
@@ -132,9 +133,11 @@ for (const file of files) {
   const dir = path.join(OUT_DIR, slug);
   await fs.mkdir(dir, { recursive: true });
   const core = await coreSvg(user, photoBuf, photoMime, logoBuf);
+  const phone = user.phone ? contactRowSvg('Tel:', user.phone, GRAY) : null;
   const email = contactRowSvg('Email:', user.email);
   const website = contactRowSvg('Strona:', user.website);
   await sharp(Buffer.from(core)).png({ compressionLevel: 9 }).toFile(path.join(dir, 'core.png'));
+  if (phone) await sharp(Buffer.from(phone)).png({ compressionLevel: 9 }).toFile(path.join(dir, 'phone.png'));
   await sharp(Buffer.from(email)).png({ compressionLevel: 9 }).toFile(path.join(dir, 'email.png'));
   await sharp(Buffer.from(website)).png({ compressionLevel: 9 }).toFile(path.join(dir, 'website.png'));
   await fs.writeFile(path.join(dir, 'index.html'), pageHtml(user, slug), 'utf8');
