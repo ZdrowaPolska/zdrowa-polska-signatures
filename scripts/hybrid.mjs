@@ -69,6 +69,7 @@ async function coreSvg(user, photoBuf, photoMime, logoBuf) {
 function pageHtml(user, slug) {
   const websiteHref = /^https?:\/\//i.test(user.website || '') ? user.website : `https://${user.website}`;
   const coreUrl = `${BASE_URL}/hybrid/${slug}/core.png`;
+  const spacerUrl = `${BASE_URL}/hybrid/spacer.png`;
   const linkedinIcon = `${BASE_URL}/icons/linkedin.png`;
   const facebookIcon = `${BASE_URL}/icons/facebook.png`;
   const youtubeIcon = `${BASE_URL}/icons/youtube.png`;
@@ -79,8 +80,8 @@ function pageHtml(user, slug) {
   const signature = `
 <div id="signature" style="font-family:Arial,Helvetica,sans-serif;color:${GRAY};max-width:650px;">
   <div><img src="${coreUrl}" width="600" height="150" alt="${esc(user.fullName)}" style="display:block;border:0;max-width:100%;height:auto;"></div>
-  <div style="font-size:14px;line-height:20px;margin-top:2px;">Email: <a href="mailto:${esc(user.email)}" style="color:${BLUE};text-decoration:none;">${esc(user.email)}</a></div>
-  <div style="font-size:14px;line-height:20px;">Strona: <a href="${esc(websiteHref)}" style="color:${BLUE};text-decoration:none;">${esc(user.website)}</a></div>
+  <div style="font-size:14px;line-height:20px;white-space:nowrap;"><img src="${spacerUrl}" width="328" height="1" alt="" style="display:inline-block;border:0;vertical-align:middle;width:328px;height:1px;">Email: <a href="mailto:${esc(user.email)}" style="color:${BLUE};text-decoration:none;">${esc(user.email)}</a></div>
+  <div style="font-size:14px;line-height:20px;white-space:nowrap;"><img src="${spacerUrl}" width="328" height="1" alt="" style="display:inline-block;border:0;vertical-align:middle;width:328px;height:1px;">Strona: <a href="${esc(websiteHref)}" style="color:${BLUE};text-decoration:none;">${esc(user.website)}</a></div>
   <div style="border-top:1px solid #d9e1e5;margin-top:8px;padding-top:7px;">${linkedin}<img src="${facebookIcon}" width="28" height="28" alt="Facebook" style="border:0;vertical-align:middle;margin-right:6px;"><img src="${youtubeIcon}" width="28" height="28" alt="YouTube" style="border:0;vertical-align:middle;"></div>
   <div style="font-size:11px;line-height:15px;color:#555;margin-top:7px;">${esc(DISCLAIMER_PL)}</div>
   <div style="font-size:11px;line-height:15px;color:#555;margin-top:7px;">${esc(DISCLAIMER_EN)}</div>
@@ -108,6 +109,10 @@ btn.addEventListener('click',async()=>{
 }
 
 await fs.mkdir(OUT_DIR, { recursive: true });
+await sharp({ create: { width: 656, height: 2, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 0 } } })
+  .png()
+  .toFile(path.join(OUT_DIR, 'spacer.png'));
+
 const files = (await fs.readdir(DATA_DIR)).filter(f => f.endsWith('.json')).sort();
 const logoBuf = await fs.readFile(path.join(ASSETS_DIR, 'logo.svg'));
 
