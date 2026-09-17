@@ -43,34 +43,34 @@ async function coreSvg(user, photoBuf, photoMime, logoBuf) {
   const photo = photoBuf ? dataUri(photoMime, photoBuf) : null;
   const logo = dataUri('image/svg+xml', logoBuf);
   const job = user.jobTitle
-    ? `<text x="205" y="55" font-family="Arial,Helvetica,sans-serif" font-size="15" fill="${GRAY}">${esc(user.jobTitle)}</text>`
+    ? `<text x="205" y="53" font-family="Arial,Helvetica,sans-serif" font-size="15" fill="${GRAY}">${esc(user.jobTitle)}</text>`
     : '';
   const phone = user.phone
-    ? `<text x="205" y="120" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="${GRAY}">Tel: ${esc(user.phone)}</text>`
+    ? `<text x="205" y="116" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="${GRAY}">Tel: ${esc(user.phone)}</text>`
     : '';
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 600 150">
-  <rect width="600" height="150" fill="#ffffff"/>
-  <defs><clipPath id="p"><circle cx="77" cy="45" r="42"/></clipPath></defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="248" viewBox="0 0 600 124">
+  <rect width="600" height="124" fill="#ffffff"/>
+  <defs><clipPath id="p"><circle cx="77" cy="43" r="40"/></clipPath></defs>
   ${photo
-    ? `<image href="${photo}" x="35" y="3" width="84" height="84" preserveAspectRatio="xMidYMid slice" clip-path="url(#p)"/>`
-    : `<circle cx="77" cy="45" r="42" fill="#EEF3F3"/><circle cx="77" cy="35" r="15" fill="#9BAEAF"/><path d="M47 77c4-20 15-31 30-31s26 11 30 31" fill="#9BAEAF"/>`
+    ? `<image href="${photo}" x="37" y="3" width="80" height="80" preserveAspectRatio="xMidYMid slice" clip-path="url(#p)"/>`
+    : `<circle cx="77" cy="43" r="40" fill="#EEF3F3"/><circle cx="77" cy="34" r="14" fill="#9BAEAF"/><path d="M49 74c4-19 14-29 28-29s24 10 28 29" fill="#9BAEAF"/>`
   }
-  <image href="${logo}" x="12" y="94" width="140" height="48" preserveAspectRatio="xMidYMid meet"/>
-  <rect x="175" y="5" width="2.5" height="140" fill="${BLUE}"/>
-  <text x="205" y="30" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#111111">${esc(user.fullName)}</text>
+  <image href="${logo}" x="24" y="88" width="112" height="33" preserveAspectRatio="xMidYMid meet"/>
+  <rect x="175" y="4" width="2.5" height="116" fill="${BLUE}"/>
+  <text x="205" y="28" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#111111">${esc(user.fullName)}</text>
   ${job}
-  <text x="205" y="84" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="${BLUE}">${esc(user.company)}</text>
+  <text x="205" y="81" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="${BLUE}">${esc(user.company)}</text>
   ${phone}
 </svg>`;
 }
 
 function contactRowSvg(label, value) {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="44" viewBox="0 0 600 22">
-  <rect width="600" height="22" fill="#ffffff"/>
-  <text x="205" y="16" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="${GRAY}">${esc(label)} <tspan fill="${BLUE}">${esc(value)}</tspan></text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="40" viewBox="0 0 600 20">
+  <rect width="600" height="20" fill="#ffffff"/>
+  <text x="205" y="14.5" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="${GRAY}">${esc(label)} <tspan fill="${BLUE}">${esc(value)}</tspan></text>
 </svg>`;
 }
 
@@ -88,10 +88,10 @@ function pageHtml(user, slug) {
 
   const signature = `
 <div id="signature" style="font-family:Arial,Helvetica,sans-serif;color:${GRAY};max-width:650px;">
-  <div><img src="${coreUrl}" width="600" height="150" alt="${esc(user.fullName)}" style="display:block;border:0;"></div>
-  <div><a href="mailto:${esc(user.email)}"><img src="${emailUrl}" width="600" height="22" alt="Email: ${esc(user.email)}" style="display:block;border:0;"></a></div>
-  <div><a href="${esc(websiteHref)}"><img src="${websiteUrl}" width="600" height="22" alt="Strona: ${esc(user.website)}" style="display:block;border:0;"></a></div>
-  <div style="border-top:1px solid #d9e1e5;margin-top:8px;padding-top:7px;">${linkedin}<img src="${facebookIcon}" width="28" height="28" alt="Facebook" style="border:0;vertical-align:middle;margin-right:6px;"><img src="${youtubeIcon}" width="28" height="28" alt="YouTube" style="border:0;vertical-align:middle;"></div>
+  <div><img src="${coreUrl}" width="600" height="124" alt="${esc(user.fullName)}" style="display:block;border:0;"></div>
+  <div><a href="mailto:${esc(user.email)}"><img src="${emailUrl}" width="600" height="20" alt="Email: ${esc(user.email)}" style="display:block;border:0;"></a></div>
+  <div><a href="${esc(websiteHref)}"><img src="${websiteUrl}" width="600" height="20" alt="Strona: ${esc(user.website)}" style="display:block;border:0;"></a></div>
+  <div style="border-top:1px solid #d9e1e5;margin-top:6px;padding-top:6px;">${linkedin}<img src="${facebookIcon}" width="28" height="28" alt="Facebook" style="border:0;vertical-align:middle;margin-right:6px;"><img src="${youtubeIcon}" width="28" height="28" alt="YouTube" style="border:0;vertical-align:middle;"></div>
   <div style="font-size:11px;line-height:15px;color:#555;margin-top:7px;">${esc(DISCLAIMER_PL)}</div>
   <div style="font-size:11px;line-height:15px;color:#555;margin-top:7px;">${esc(DISCLAIMER_EN)}</div>
 </div>`;
