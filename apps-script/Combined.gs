@@ -88,7 +88,14 @@ function getUserPhoto_(email) {
     const photo = AdminDirectory.Users.Photos.get(email);
     if (!photo || !photo.photoData) return null;
 
-    const bytes = Utilities.base64DecodeWebSafe(photo.photoData);
+    let encoded = String(photo.photoData)
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .replace(/\*/g, '=')
+      .replace(/\./g, '=');
+    while (encoded.length % 4 !== 0) encoded += '=';
+
+    const bytes = Utilities.base64Decode(encoded);
     const mime = photo.mimeType || 'image/jpeg';
     let ext = 'jpg';
     if (mime.indexOf('png') >= 0) ext = 'png';
