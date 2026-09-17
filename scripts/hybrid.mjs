@@ -136,10 +136,13 @@ for (const file of files) {
   const phone = user.phone ? contactRowSvg('Tel:', user.phone, GRAY) : null;
   const email = contactRowSvg('Email:', user.email);
   const website = contactRowSvg('Strona:', user.website);
-  await sharp(Buffer.from(core)).png({ compressionLevel: 9 }).toFile(path.join(dir, 'core.png'));
-  if (phone) await sharp(Buffer.from(phone)).png({ compressionLevel: 9 }).toFile(path.join(dir, 'phone.png'));
-  await sharp(Buffer.from(email)).png({ compressionLevel: 9 }).toFile(path.join(dir, 'email.png'));
-  await sharp(Buffer.from(website)).png({ compressionLevel: 9 }).toFile(path.join(dir, 'website.png'));
+
+  // Google Admin Append footer displays linked images at their intrinsic pixel size.
+  // Render at 2x for antialiasing, then downsample to the exact intended display size.
+  await sharp(Buffer.from(core)).resize(600, 104, { fit: 'fill' }).png({ compressionLevel: 9 }).toFile(path.join(dir, 'core.png'));
+  if (phone) await sharp(Buffer.from(phone)).resize(600, 20, { fit: 'fill' }).png({ compressionLevel: 9 }).toFile(path.join(dir, 'phone.png'));
+  await sharp(Buffer.from(email)).resize(600, 20, { fit: 'fill' }).png({ compressionLevel: 9 }).toFile(path.join(dir, 'email.png'));
+  await sharp(Buffer.from(website)).resize(600, 20, { fit: 'fill' }).png({ compressionLevel: 9 }).toFile(path.join(dir, 'website.png'));
   await fs.writeFile(path.join(dir, 'index.html'), pageHtml(user, slug), 'utf8');
 }
 
