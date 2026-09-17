@@ -24,18 +24,26 @@ function getUserPhotoV2_(email) {
     let encoded = String(photo.photoData).replace(/\s/g, '');
     while (encoded.length % 4 !== 0) encoded += '=';
     const bytes = Utilities.base64DecodeWebSafe(encoded);
+    if (!bytes || !bytes.length) return null;
 
-    const rawMime = String(photo.mimeType || 'JPEG').toUpperCase();
-    const mimeMap = {
-      'JPEG': {mimeType: 'image/jpeg', extension: 'jpg'},
-      'JPG': {mimeType: 'image/jpeg', extension: 'jpg'},
-      'PNG': {mimeType: 'image/png', extension: 'png'},
-      'GIF': {mimeType: 'image/gif', extension: 'gif'},
-      'BMP': {mimeType: 'image/bmp', extension: 'bmp'},
-      'TIFF': {mimeType: 'image/tiff', extension: 'tiff'},
-      'WEBP': {mimeType: 'image/webp', extension: 'webp'}
-    };
-    const info = mimeMap[rawMime] || {mimeType: 'image/jpeg', extension: 'jpg'};
+    const u = i => ((bytes[i] || 0) + 256) % 256;
+    let info = { mimeType: 'image/jpeg', extension: 'jpg' };
+
+    if (bytes.length >= 8 &&
+        u(0) === 0x89 && u(1) === 0x50 && u(2) === 0x4E && u(3) === 0x47 &&
+        u(4) === 0x0D && u(5) === 0x0A && u(6) === 0x1A && u(7) === 0x0A) {
+      info = { mimeType: 'image/png', extension: 'png' };
+    } else if (bytes.length >= 3 && u(0) === 0xFF && u(1) === 0xD8 && u(2) === 0xFF) {
+      info = { mimeType: 'image/jpeg', extension: 'jpg' };
+    } else if (bytes.length >= 6 &&
+               u(0) === 0x47 && u(1) === 0x49 && u(2) === 0x46 &&
+               u(3) === 0x38 && (u(4) === 0x37 || u(4) === 0x39) && u(5) === 0x61) {
+      info = { mimeType: 'image/gif', extension: 'gif' };
+    } else if (bytes.length >= 12 &&
+               u(0) === 0x52 && u(1) === 0x49 && u(2) === 0x46 && u(3) === 0x46 &&
+               u(8) === 0x57 && u(9) === 0x45 && u(10) === 0x42 && u(11) === 0x50) {
+      info = { mimeType: 'image/webp', extension: 'webp' };
+    }
 
     return {
       bytes: bytes,
