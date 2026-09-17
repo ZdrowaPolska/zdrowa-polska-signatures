@@ -2,8 +2,8 @@ const ZP_CONFIG = Object.freeze({
   DOMAIN: 'zdrowapolskagroup.pl',
   COMPANY: 'Zdrowa Polska S.A.',
   WEBSITE: 'www.zdrowapolskagroup.pl',
+  WEBSITE_HREF: 'https://zdrowapolskagroup.pl/',
 
-  TEST_MODE: true,
   TEST_USER: 'dhyk@zdrowapolskagroup.pl',
 
   CUSTOM_SCHEMA: 'SignatureProfile',
@@ -19,7 +19,16 @@ const ZP_CONFIG = Object.freeze({
   FACEBOOK_URL: '',
   YOUTUBE_URL: '',
 
-  GMAIL_SCOPE: 'https://www.googleapis.com/auth/gmail.settings.basic'
+  GMAIL_SCOPE: 'https://www.googleapis.com/auth/gmail.settings.basic',
+
+  MODE_PROPERTY: 'SIGNATURE_MODE',
+  MODE_TEST: 'test',
+  MODE_PRODUCTION: 'production',
+  MANAGED_PREFIX: 'SIG_MANAGED_',
+  DESIRED_HASH_PREFIX: 'SIG_DESIRED_HASH_',
+  ACTUAL_HASH_PREFIX: 'SIG_ACTUAL_HASH_',
+  PHOTO_HASH_PREFIX: 'PHOTO_HASH_',
+  PHOTO_EXT_PREFIX: 'PHOTO_EXT_'
 });
 
 const DISCLAIMER_PL = 'Niniejsza wiadomość wraz z załącznikami zawiera ściśle poufne i prawnie chronione informacje. Jeśli są Państwo jej omyłkowym odbiorcą, prosimy o jej usunięcie i niezwłoczne poinformowanie nadawcy. Kopiowanie, ujawnianie lub rozpowszechnianie materiału zawartego w tym e-mailu jest zabronione.';
@@ -38,8 +47,30 @@ function slugFromEmail_(email) {
   return String(email).split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '-');
 }
 
-function getWorkspaceUser_(email) {
-  const user = AdminDirectory.Users.get(email, { projection: 'full' });
+function propertyKeyForEmail_(prefix, email) {
+  return prefix + String(email).toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
+
+function signatureMode_() {
+  const value = String(
+    PropertiesService.getScriptProperties().getProperty(ZP_CONFIG.MODE_PROPERTY) || ZP_CONFIG.MODE_TEST
+  ).toLowerCase();
+  return value === ZP_CONFIG.MODE_PRODUCTION ? ZP_CONFIG.MODE_PRODUCTION : ZP_CONFIG.MODE_TEST;
+}
+
+function isProduction_() {
+  return signatureMode_() === ZP_CONFIG.MODE_PRODUCTION;
+}
+
+function setSignatureMode_(mode) {
+  const normalized = String(mode).toLowerCase();
+  if (normalized !== ZP_CONFIG.MODE_TEST && normalized !== ZP_CONFIG.MODE_PRODUCTION) {
+    throw new Error('Invalid signature mode: ' + mode);
+  }
+  PropertiesService.getScriptProperties().setProperty(ZP_CONFIG.MODE_PROPERTY, normalized);
+}
+
+function workspaceUserFromRaw_(user) {
   const organizations = user.organizations || [];
   const org = organizations.find(function(x) { return x.primary; }) || organizations[0] || {};
   const phones = user.phones || [];
@@ -66,11 +97,14 @@ function getWorkspaceUser_(email) {
   };
 }
 
-function listEligibleUsers_() {
-  if (ZP_CONFIG.TEST_MODE) return [getWorkspaceUser_(ZP_CONFIG.TEST_USER)];
+function getWorkspaceUser_(email) {
+  return workspaceUserFromRaw_(AdminDirectory.Users.get(email, { projection: 'full' }));
+}
 
+function listAllActiveUsers_() {
   const out = [];
   let pageToken;
+
   do {
     const response = AdminDirectory.Users.list({
       domain: ZP_CONFIG.DOMAIN,
@@ -78,19 +112,28 @@ function listEligibleUsers_() {
       maxResults: 200,
       pageToken: pageToken
     });
+
     (response.users || []).forEach(function(raw) {
-      const u = getWorkspaceUser_(raw.primaryEmail);
-      if (!u.suspended && !u.archived && u.enabled) out.push(u);
+      const u = workspaceUserFromRaw_(raw);
+      if (!u.suspended && !u.archived) out.push(u);
     });
+
     pageToken = response.nextPageToken;
   } while (pageToken);
+
   return out;
+}
+
+function usersForCurrentMode_() {
+  if (!isProduction_()) return [getWorkspaceUser_(ZP_CONFIG.TEST_USER)];
+  return listAllActiveUsers_();
 }
 
 function getUserPhoto_(email) {
   try {
     const url = 'https://admin.googleapis.com/admin/directory/v1/users/' +
       encodeURIComponent(email) + '/photos/thumbnail';
+
     const response = UrlFetchApp.fetch(url, {
       method: 'get',
       muteHttpExceptions: true,
@@ -153,10 +196,12 @@ function githubRequest_(method, path, body, accept404) {
       'X-GitHub-Api-Version': '2022-11-28'
     }
   };
+
   if (body !== undefined && body !== null) {
     options.contentType = 'application/json';
     options.payload = JSON.stringify(body);
   }
+
   const response = UrlFetchApp.fetch(url, options);
   const code = response.getResponseCode();
   const text = response.getContentText();
@@ -178,19 +223,28 @@ function githubGetFile_(path) {
 function githubPutBytesIfChanged_(path, bytes, message) {
   const current = githubGetFile_(path);
   const newBase64 = Utilities.base64Encode(bytes);
+
   if (current && current.content) {
     const oldBase64 = String(current.content).replace(/\s/g, '');
     if (oldBase64 === newBase64) return false;
   }
+
   const payload = { message: message, branch: githubSettings_().branch, content: newBase64 };
   if (current && current.sha) payload.sha = current.sha;
-  githubRequest_('put', '/contents/' + path.split('/').map(encodeURIComponent).join('/'), payload, false);
+
+  githubRequest_(
+    'put',
+    '/contents/' + path.split('/').map(encodeURIComponent).join('/'),
+    payload,
+    false
+  );
   return true;
 }
 
 function githubDeleteIfExists_(path, message) {
   const current = githubGetFile_(path);
   if (!current || !current.sha) return false;
+
   githubRequest_(
     'delete',
     '/contents/' + path.split('/').map(encodeURIComponent).join('/'),
@@ -200,20 +254,54 @@ function githubDeleteIfExists_(path, message) {
   return true;
 }
 
-function sha256Short_(bytes) {
+function sha256Hex_(bytes) {
   const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes);
   return digest.map(function(b) {
     const v = (b + 256) % 256;
     return ('0' + v.toString(16)).slice(-2);
-  }).join('').slice(0, 16);
+  }).join('');
+}
+
+function sha256Short_(bytes) {
+  return sha256Hex_(bytes).slice(0, 16);
+}
+
+function textHash_(text) {
+  return sha256Hex_(Utilities.newBlob(String(text), 'text/plain').getBytes());
 }
 
 function syncPhoto_(user) {
+  const props = PropertiesService.getScriptProperties();
+  const hashKey = propertyKeyForEmail_(ZP_CONFIG.PHOTO_HASH_PREFIX, user.email);
+  const extKey = propertyKeyForEmail_(ZP_CONFIG.PHOTO_EXT_PREFIX, user.email);
   const photo = getUserPhoto_(user.email);
-  if (!photo) return ZP_CONFIG.ASSET_BASE_URL + '/assets/neutral-avatar.png';
-
   const slug = slugFromEmail_(user.email);
+
+  if (!photo) {
+    const oldExt = props.getProperty(extKey);
+    if (oldExt) {
+      ['jpg', 'png', 'webp'].forEach(function(ext) {
+        githubDeleteIfExists_(
+          ZP_CONFIG.PHOTOS_PATH + '/' + slug + '.' + ext,
+          'Remove Workspace photo for ' + user.email
+        );
+      });
+      props.deleteProperty(hashKey);
+      props.deleteProperty(extKey);
+    }
+    return ZP_CONFIG.ASSET_BASE_URL + '/assets/neutral-avatar.png';
+  }
+
+  const photoHash = sha256Short_(photo.bytes);
+  const oldHash = props.getProperty(hashKey) || '';
+  const oldExt = props.getProperty(extKey) || '';
+
+  if (oldHash === photoHash && oldExt === photo.extension) {
+    return ZP_CONFIG.ASSET_BASE_URL + '/photos/' + slug + '.' + photo.extension + '?v=' + photoHash;
+  }
+
   const filename = slug + '.' + photo.extension;
+
   githubPutBytesIfChanged_(
     ZP_CONFIG.PHOTOS_PATH + '/' + filename,
     photo.bytes,
@@ -222,11 +310,17 @@ function syncPhoto_(user) {
 
   ['jpg', 'png', 'webp'].forEach(function(ext) {
     if (ext !== photo.extension) {
-      githubDeleteIfExists_(ZP_CONFIG.PHOTOS_PATH + '/' + slug + '.' + ext, 'Remove obsolete photo format for ' + user.email);
+      githubDeleteIfExists_(
+        ZP_CONFIG.PHOTOS_PATH + '/' + slug + '.' + ext,
+        'Remove obsolete photo format for ' + user.email
+      );
     }
   });
 
-  return ZP_CONFIG.ASSET_BASE_URL + '/photos/' + filename + '?v=' + sha256Short_(photo.bytes);
+  props.setProperty(hashKey, photoHash);
+  props.setProperty(extKey, photo.extension);
+
+  return ZP_CONFIG.ASSET_BASE_URL + '/photos/' + filename + '?v=' + photoHash;
 }
 
 function socialIcon_(name, url, alt) {
@@ -237,10 +331,12 @@ function socialIcon_(name, url, alt) {
 
 function buildSignatureHtml_(user, photoUrl) {
   const logoUrl = ZP_CONFIG.ASSET_BASE_URL + '/assets/logo.png';
-  const websiteHref = 'https://' + ZP_CONFIG.WEBSITE;
+  const websiteHref = ZP_CONFIG.WEBSITE_HREF;
+
   const phoneRow = user.phone
     ? '<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:19px;color:#555;">Tel: <a href="tel:' + htmlEscape_(String(user.phone).replace(/[^+\d]/g, '')) + '" style="color:#555;text-decoration:none;">' + htmlEscape_(user.phone) + '</a></div>'
     : '';
+
   const titleRow = user.jobTitle
     ? '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:19px;color:#555;">' + htmlEscape_(user.jobTitle) + '</div>'
     : '';
@@ -255,7 +351,7 @@ function buildSignatureHtml_(user, photoUrl) {
       '<tr>' +
         '<td valign="top" style="width:170px;padding:0 20px 0 0;text-align:center;">' +
           '<img src="' + htmlEscape_(photoUrl) + '" width="96" height="96" alt="' + htmlEscape_(user.fullName) + '" style="display:block;width:96px;height:96px;border:0;border-radius:48px;margin:0 auto 8px auto;">' +
-          '<img src="' + logoUrl + '" width="145" alt="Zdrowa Polska" style="display:block;width:145px;height:auto;border:0;margin:0 auto;">' +
+          '<img src="' + logoUrl + '" width="210" alt="Zdrowa Polska" style="display:block;width:210px;height:auto;border:0;margin:0 auto;">' +
         '</td>' +
         '<td valign="top" style="border-left:3px solid #0B6FA4;padding:1px 0 0 20px;">' +
           '<div style="font-family:Arial,Helvetica,sans-serif;font-size:21px;line-height:25px;font-weight:700;color:#111;">' + htmlEscape_(user.fullName) + '</div>' +
@@ -264,10 +360,10 @@ function buildSignatureHtml_(user, photoUrl) {
           phoneRow +
           '<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:19px;color:#555;">Email: <a href="mailto:' + htmlEscape_(user.email) + '" style="color:#0B6FA4;text-decoration:none;">' + htmlEscape_(user.email) + '</a></div>' +
           '<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:19px;color:#555;">Strona: <a href="' + websiteHref + '" style="color:#0B6FA4;text-decoration:none;">' + ZP_CONFIG.WEBSITE + '</a></div>' +
+          '<div style="padding-top:8px;">' + social + '</div>' +
         '</td>' +
       '</tr>' +
       '<tr><td colspan="2" style="padding-top:9px;border-bottom:1px solid #d9e1e5;"></td></tr>' +
-      '<tr><td colspan="2" style="padding-top:7px;">' + social + '</td></tr>' +
       '<tr><td colspan="2" style="padding-top:7px;font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:14px;color:#666;">' + htmlEscape_(DISCLAIMER_PL) + '</td></tr>' +
       '<tr><td colspan="2" style="padding-top:6px;font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:14px;color:#666;">' + htmlEscape_(DISCLAIMER_EN) + '</td></tr>' +
     '</table>';
@@ -291,7 +387,11 @@ function serviceAccountSettings_() {
   return { email: email, privateKey: privateKey };
 }
 
+const ZP_TOKEN_CACHE = {};
+
 function delegatedAccessToken_(subjectEmail) {
+  const cacheKey = String(subjectEmail).toLowerCase();
+  if (ZP_TOKEN_CACHE[cacheKey]) return ZP_TOKEN_CACHE[cacheKey];
   const sa = serviceAccountSettings_();
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: 'RS256', typ: 'JWT' };
@@ -303,6 +403,7 @@ function delegatedAccessToken_(subjectEmail) {
     iat: now,
     exp: now + 3600
   };
+
   const unsigned = base64UrlText_(JSON.stringify(header)) + '.' + base64UrlText_(JSON.stringify(claims));
   const signature = Utilities.computeRsaSha256Signature(unsigned, sa.privateKey);
   const assertion = unsigned + '.' + base64UrlBytes_(signature);
@@ -315,50 +416,248 @@ function delegatedAccessToken_(subjectEmail) {
       assertion: assertion
     }
   });
+
   const code = response.getResponseCode();
   const text = response.getContentText();
   if (code < 200 || code >= 300) throw new Error('Google OAuth token error ' + code + ': ' + text);
+
   const data = JSON.parse(text);
   if (!data.access_token) throw new Error('Google OAuth response did not contain an access token.');
+  ZP_TOKEN_CACHE[cacheKey] = data.access_token;
   return data.access_token;
+}
+
+function gmailSendAsUrl_(email) {
+  return 'https://gmail.googleapis.com/gmail/v1/users/' +
+    encodeURIComponent(email) + '/settings/sendAs/' + encodeURIComponent(email);
+}
+
+function getGmailSendAs_(email) {
+  const token = delegatedAccessToken_(email);
+  const response = UrlFetchApp.fetch(gmailSendAsUrl_(email), {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token }
+  });
+
+  const code = response.getResponseCode();
+  const text = response.getContentText();
+  if (code < 200 || code >= 300) {
+    throw new Error('Gmail API GET HTTP ' + code + ' for ' + email + ': ' + text);
+  }
+  return text ? JSON.parse(text) : {};
 }
 
 function setGmailSignature_(email, html) {
   const token = delegatedAccessToken_(email);
-  const url = 'https://gmail.googleapis.com/gmail/v1/users/' + encodeURIComponent(email) + '/settings/sendAs/' + encodeURIComponent(email);
-  const response = UrlFetchApp.fetch(url, {
+  const response = UrlFetchApp.fetch(gmailSendAsUrl_(email), {
     method: 'patch',
     contentType: 'application/json',
     muteHttpExceptions: true,
     headers: { Authorization: 'Bearer ' + token },
     payload: JSON.stringify({ signature: html })
   });
+
   const code = response.getResponseCode();
+  const text = response.getContentText();
   if (code < 200 || code >= 300) {
-    throw new Error('Gmail API HTTP ' + code + ' for ' + email + ': ' + response.getContentText());
+    throw new Error('Gmail API PATCH HTTP ' + code + ' for ' + email + ': ' + text);
   }
+  return text ? JSON.parse(text) : {};
+}
+
+function clearGmailSignature_(email) {
+  return setGmailSignature_(email, '');
+}
+
+function isManaged_(email) {
+  return PropertiesService.getScriptProperties().getProperty(
+    propertyKeyForEmail_(ZP_CONFIG.MANAGED_PREFIX, email)
+  ) === 'true';
+}
+
+function markManaged_(email, desiredHtml, gmailSignatureHtml) {
+  const props = PropertiesService.getScriptProperties();
+  const values = {};
+  values[propertyKeyForEmail_(ZP_CONFIG.MANAGED_PREFIX, email)] = 'true';
+  values[propertyKeyForEmail_(ZP_CONFIG.DESIRED_HASH_PREFIX, email)] = textHash_(desiredHtml);
+  values[propertyKeyForEmail_(ZP_CONFIG.ACTUAL_HASH_PREFIX, email)] = textHash_(gmailSignatureHtml || desiredHtml);
+  props.setProperties(values, false);
+}
+
+function forgetManaged_(email) {
+  const props = PropertiesService.getScriptProperties();
+  props.deleteProperty(propertyKeyForEmail_(ZP_CONFIG.MANAGED_PREFIX, email));
+  props.deleteProperty(propertyKeyForEmail_(ZP_CONFIG.DESIRED_HASH_PREFIX, email));
+  props.deleteProperty(propertyKeyForEmail_(ZP_CONFIG.ACTUAL_HASH_PREFIX, email));
+}
+
+function syncEnabledUser_(user) {
+  const photoUrl = syncPhoto_(user);
+  const desiredHtml = buildSignatureHtml_(user, photoUrl);
+  const desiredHash = textHash_(desiredHtml);
+
+  const props = PropertiesService.getScriptProperties();
+  const desiredKey = propertyKeyForEmail_(ZP_CONFIG.DESIRED_HASH_PREFIX, user.email);
+  const actualKey = propertyKeyForEmail_(ZP_CONFIG.ACTUAL_HASH_PREFIX, user.email);
+  const storedDesiredHash = props.getProperty(desiredKey) || '';
+  const storedActualHash = props.getProperty(actualKey) || '';
+
+  const current = getGmailSendAs_(user.email);
+  const currentSignature = current.signature || '';
+  const currentActualHash = textHash_(currentSignature);
+
+  if (isManaged_(user.email) && desiredHash === storedDesiredHash && currentActualHash === storedActualHash) {
+    return { action: 'unchanged', email: user.email };
+  }
+
+  const updated = setGmailSignature_(user.email, desiredHtml);
+  const resultingSignature = updated.signature || desiredHtml;
+  markManaged_(user.email, desiredHtml, resultingSignature);
+  return { action: 'updated', email: user.email };
+}
+
+function syncDisabledUser_(user) {
+  if (!isManaged_(user.email)) {
+    return { action: 'ignored', email: user.email };
+  }
+
+  clearGmailSignature_(user.email);
+  forgetManaged_(user.email);
+  return { action: 'cleared', email: user.email };
 }
 
 function syncSignatures() {
-  const users = listEligibleUsers_();
-  let updated = 0;
+  const users = usersForCurrentMode_();
+  const stats = { updated: 0, unchanged: 0, cleared: 0, ignored: 0, failed: 0 };
+  const failures = [];
 
   users.forEach(function(user) {
-    if (user.suspended || user.archived) return;
-    if (!ZP_CONFIG.TEST_MODE && !user.enabled) return;
+    try {
+      if (user.suspended || user.archived) return;
 
-    const photoUrl = syncPhoto_(user);
-    const html = buildSignatureHtml_(user, photoUrl);
-    setGmailSignature_(user.email, html);
-    updated++;
+      let result;
+      if (!isProduction_()) {
+        result = syncEnabledUser_(user);
+      } else if (user.enabled) {
+        result = syncEnabledUser_(user);
+      } else {
+        result = syncDisabledUser_(user);
+      }
+
+      if (result && stats.hasOwnProperty(result.action)) stats[result.action]++;
+    } catch (e) {
+      stats.failed++;
+      failures.push(user.email + ': ' + e.message);
+      console.error('Signature sync failed for ' + user.email + ': ' + e.message);
+    }
   });
 
-  console.log('Gmail signature sync complete. Updated users: ' + updated);
+  console.log('Signature mode: ' + signatureMode_());
+  console.log('Gmail signature sync complete: ' + JSON.stringify(stats));
+
+  if (failures.length) {
+    throw new Error('Signature sync completed with failures (' + failures.length + '): ' + failures.join(' | '));
+  }
+
+  return stats;
+}
+
+function stageLaunchAssets() {
+  const users = listAllActiveUsers_();
+  let staged = 0;
+
+  users.forEach(function(user) {
+    if (!user.enabled) return;
+    syncPhoto_(user);
+    staged++;
+  });
+
+  console.log('Staged signature assets for enabled users: ' + staged);
+}
+
+function launchReadinessCheck() {
+  githubSettings_();
+  serviceAccountSettings_();
+  delegatedAccessToken_(ZP_CONFIG.TEST_USER);
+
+  const logo = githubGetFile_('assets/logo.png');
+  if (!logo) throw new Error('GitHub asset assets/logo.png was not found.');
+
+  const users = listAllActiveUsers_();
+  const enabled = users.filter(function(u) { return u.enabled; });
+  const warnings = [];
+
+  enabled.forEach(function(user) {
+    if (!user.jobTitle) warnings.push(user.email + ': brak stanowiska');
+    if (!user.phone) warnings.push(user.email + ': brak telefonu');
+    if (!user.linkedin) warnings.push(user.email + ': brak LinkedIn');
+  });
+
+  console.log('Launch readiness OK. Active users: ' + users.length + '; EmailSignature=true: ' + enabled.length + '; EmailSignature=false: ' + (users.length - enabled.length));
+  if (warnings.length) console.log('Optional profile warnings: ' + warnings.join(' | '));
+  return { activeUsers: users.length, enabledUsers: enabled.length, warnings: warnings };
+}
+
+function removeSyncTriggers_() {
+  ScriptApp.getProjectTriggers()
+    .filter(function(t) { return t.getHandlerFunction() === 'syncSignatures'; })
+    .forEach(function(t) { ScriptApp.deleteTrigger(t); });
+}
+
+function setupHourlyTrigger() {
+  removeSyncTriggers_();
+  ScriptApp.newTrigger('syncSignatures')
+    .timeBased()
+    .everyHours(1)
+    .create();
+}
+
+function goLive() {
+  launchReadinessCheck();
+  setSignatureMode_(ZP_CONFIG.MODE_PRODUCTION);
+
+  try {
+    const stats = syncSignatures();
+    setupHourlyTrigger();
+    console.log('GO LIVE complete. Production mode is ON and hourly synchronization is active.');
+    return stats;
+  } catch (e) {
+    setSignatureMode_(ZP_CONFIG.MODE_TEST);
+    removeSyncTriggers_();
+    console.error('GO LIVE failed. Mode returned to TEST and no hourly trigger is active. Some users may already have been updated before the error: ' + e.message);
+    throw e;
+  }
+}
+
+function backToTest() {
+  setSignatureMode_(ZP_CONFIG.MODE_TEST);
+  removeSyncTriggers_();
+  console.log('TEST mode is ON. Hourly synchronization is OFF. Existing user signatures were not removed.');
+}
+
+function systemStatus() {
+  const triggers = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === 'syncSignatures';
+  }).length;
+  const users = listAllActiveUsers_();
+  const enabled = users.filter(function(u) { return u.enabled; }).length;
+
+  const status = {
+    mode: signatureMode_(),
+    hourlySyncTriggers: triggers,
+    activeUsers: users.length,
+    enabledUsers: enabled,
+    disabledUsers: users.length - enabled
+  };
+  console.log(JSON.stringify(status));
+  return status;
 }
 
 function setupSignatureSchema() {
   const name = ZP_CONFIG.CUSTOM_SCHEMA;
   let exists = false;
+
   try {
     AdminDirectory.Schemas.get('my_customer', name);
     exists = true;
@@ -371,8 +670,18 @@ function setupSignatureSchema() {
       schemaName: name,
       displayName: 'Email Signature',
       fields: [
-        { fieldName: ZP_CONFIG.LINKEDIN_FIELD, fieldType: 'STRING', multiValued: false, readAccessType: 'ADMINS_AND_SELF' },
-        { fieldName: ZP_CONFIG.ENABLED_FIELD, fieldType: 'BOOL', multiValued: false, readAccessType: 'ADMINS_AND_SELF' }
+        {
+          fieldName: ZP_CONFIG.LINKEDIN_FIELD,
+          fieldType: 'STRING',
+          multiValued: false,
+          readAccessType: 'ADMINS_AND_SELF'
+        },
+        {
+          fieldName: ZP_CONFIG.ENABLED_FIELD,
+          fieldType: 'BOOL',
+          multiValued: false,
+          readAccessType: 'ADMINS_AND_SELF'
+        }
       ]
     }, 'my_customer');
   }
@@ -386,16 +695,12 @@ function setupTestUser() {
   AdminDirectory.Users.patch(patch, ZP_CONFIG.TEST_USER);
 }
 
-function setupHourlyTrigger() {
-  ScriptApp.getProjectTriggers()
-    .filter(function(t) { return t.getHandlerFunction() === 'syncSignatures'; })
-    .forEach(function(t) { ScriptApp.deleteTrigger(t); });
-  ScriptApp.newTrigger('syncSignatures').timeBased().everyHours(1).create();
-}
-
-function firstTimeSetup() {
+function prepareSystem() {
   setupSignatureSchema();
-  setupTestUser();
-  setupHourlyTrigger();
+  setSignatureMode_(ZP_CONFIG.MODE_TEST);
+  removeSyncTriggers_();
+  launchReadinessCheck();
+  stageLaunchAssets();
   syncSignatures();
+  console.log('Preparation complete. Enabled-user assets are staged and the system remains in TEST mode.');
 }
