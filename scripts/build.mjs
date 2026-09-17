@@ -102,6 +102,7 @@ function adminFooterHtml(user, slug, hasPhoto) {
   return `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Email footer ${esc(user.fullName)}</title></head>
 <body style="margin:0;padding:20px;background:#fff;">
+<div style="font-family:Arial,Helvetica,sans-serif;margin-bottom:18px;"><button id="copyButton" type="button" onclick="copySignature()" style="font:600 14px Arial,sans-serif;padding:10px 16px;border:0;border-radius:6px;background:#0B6FA4;color:#fff;cursor:pointer;">Kopiuj podpis</button> <span id="copyStatus" style="font-size:13px;color:#555;margin-left:8px;"></span></div>
 <div id="signature" style="max-width:760px;">
   <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
     <tr>
@@ -127,6 +128,33 @@ function adminFooterHtml(user, slug, hasPhoto) {
   <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:15px;color:#555;max-width:760px;">${esc(DISCLAIMER_PL)}</div>
   <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:15px;color:#555;max-width:760px;margin-top:8px;">${esc(DISCLAIMER_EN)}</div>
 </div>
+<script>
+async function copySignature() {
+  const node = document.getElementById('signature');
+  const html = node.outerHTML;
+  const plain = node.innerText;
+  const status = document.getElementById('copyStatus');
+  try {
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([html], {type: 'text/html'}),
+        'text/plain': new Blob([plain], {type: 'text/plain'})
+      })]);
+    } else {
+      const range = document.createRange();
+      range.selectNode(node);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.execCommand('copy');
+      sel.removeAllRanges();
+    }
+    status.textContent = 'Skopiowano';
+  } catch (e) {
+    status.textContent = 'Nie udało się skopiować — zaznacz podpis ręcznie.';
+  }
+}
+</script>
 </body></html>`;
 }
 
