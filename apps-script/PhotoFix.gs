@@ -1,46 +1,29 @@
-function decodeGooglePhotoData_(value) {
-  let s = String(value || '').replace(/\s/g, '');
-  if (!s) return [];
-
-  // Google Directory uses a modified web-safe Base64 alphabet:
-  // '-' for '+', '_' for '/', '*' and '.' for padding.
-  s = s
-    .replace(/-/g, '+')
-    .replace(/_/g, '/')
-    .replace(/[*.]/g, '=')
-    .replace(/=+$/g, '');
-
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  const out = [];
-  let buffer = 0;
-  let bits = 0;
-
-  for (let i = 0; i < s.length; i++) {
-    const value6 = alphabet.indexOf(s.charAt(i));
-    if (value6 < 0) throw new Error('Unexpected character in profile photo data.');
-
-    buffer = (buffer << 6) | value6;
-    bits += 6;
-
-    while (bits >= 8) {
-      bits -= 8;
-      const b = (buffer >> bits) & 0xff;
-      // Apps Script byte arrays use signed byte values.
-      out.push(b > 127 ? b - 256 : b);
-      buffer = bits ? (buffer & ((1 << bits) - 1)) : 0;
-    }
-  }
-
-  return out;
-}
-
 function getUserPhotoV2_(email) {
   try {
-    const photo = AdminDirectory.Users.Photos.get(email);
+    const url = 'https://admin.googleapis.com/admin/directory/v1/users/' +
+      encodeURIComponent(email) + '/photos/thumbnail';
+
+    const response = UrlFetchApp.fetch(url, {
+      method: 'get',
+      muteHttpExceptions: true,
+      headers: {
+        'Authorization': 'Bearer ' + ScriptApp.getOAuthToken(),
+        'Accept': 'application/json'
+      }
+    });
+
+    const code = response.getResponseCode();
+    if (code === 404) return null;
+    if (code < 200 || code >= 300) {
+      throw new Error('Directory API HTTP ' + code + ': ' + response.getContentText());
+    }
+
+    const photo = JSON.parse(response.getContentText());
     if (!photo || !photo.photoData) return null;
 
-    const bytes = decodeGooglePhotoData_(photo.photoData);
-    if (!bytes.length) return null;
+    let encoded = String(photo.photoData).replace(/\s/g, '');
+    while (encoded.length % 4 !== 0) encoded += '=';
+    const bytes = Utilities.base64DecodeWebSafe(encoded);
 
     const rawMime = String(photo.mimeType || 'JPEG').toUpperCase();
     const mimeMap = {
