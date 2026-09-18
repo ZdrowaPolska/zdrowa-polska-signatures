@@ -349,8 +349,8 @@ function buildSignatureHtml_(user, photoUrl) {
   return '' +
     '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;max-width:680px;">' +
       '<tr>' +
-        '<td valign="top" style="width:150px;padding:0 8px 0 0;text-align:center;">' +
-          '<img src="' + htmlEscape_(photoUrl) + '" width="96" height="96" alt="' + htmlEscape_(user.fullName) + '" style="display:block;width:96px;height:96px;border:0;border-radius:48px;margin:0 auto 8px auto;">' +
+        '<td valign="top" style="width:165px;padding:0 8px 0 0;text-align:center;">' +
+          '<img src="' + htmlEscape_(photoUrl) + '" width="132" height="132" alt="' + htmlEscape_(user.fullName) + '" style="display:block;width:132px;height:132px;border:0;border-radius:66px;margin:0 auto 8px auto;">' +
           '<img src="' + logoUrl + '" width="165" alt="Zdrowa Polska" style="display:block;width:165px;height:auto;border:0;margin:0 auto;">' +
         '</td>' +
         '<td valign="top" style="border-left:3px solid #0B6FA4;padding:1px 0 0 12px;">' +
