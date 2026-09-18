@@ -313,3 +313,32 @@ Trigger запускає `syncSignatures` приблизно раз на год�
 **залишити GitHub**, тому що поточна схема стабільно працює і GitHub Pages дає надійні прямі HTTPS URL для Gmail images.
 
 Міграцію на Google Drive наразі не робити.
+
+
+## 23. Автоматична синхронізація зовнішнього Gmail send-as
+
+Додано підтримку окремого Gmail mailbox, у якому корпоративна адреса використовується як `Send mail as`.
+
+Поточний mapping:
+- mailbox: `dg@vitagramma.com`
+- send-as address: `dhyk@zdrowapolskagroup.pl`
+- source profile/signature: `dhyk@zdrowapolskagroup.pl`
+
+Логіка:
+- основний корпоративний підпис формується з профілю `dhyk@zdrowapolskagroup.pl`;
+- той самий HTML автоматично записується в send-as signature всередині mailbox `dg@vitagramma.com`;
+- після увімкнення extra send-as sync він виконується разом із погодинним `syncSignatures`;
+- якщо source user має `EmailSignature=false`, раніше керований extra send-as signature очищається.
+
+Функції:
+- `testExtraSendAsAccess` — перевіряє, що service account має доступ до mailbox і send-as;
+- `enableExtraSendAs` — перевіряє доступ, вмикає extra send-as sync і одразу синхронізує підпис;
+- `disableExtraSendAs` — вимикає подальшу автоматичну синхронізацію extra send-as, не видаляючи вже встановлений підпис.
+
+Важливо:
+- service account `Gmail Signature Manager` повинен мати Domain-Wide Delegation не лише в Workspace `zdrowapolskagroup.pl`, а й у Workspace-tenant, якому належить `dg@vitagramma.com`;
+- у другому tenant потрібно авторизувати той самий OAuth Client ID:
+  `106022844431384752578`
+- scope:
+  `https://www.googleapis.com/auth/gmail.settings.basic`
+- жодних додаткових secret keys створювати не потрібно.
