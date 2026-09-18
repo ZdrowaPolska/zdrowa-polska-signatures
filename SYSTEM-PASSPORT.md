@@ -199,7 +199,7 @@ GitHub Pages workflow публікує assets. Фото працівників �
 Остання мобільна оптимізація:
 - displayed photo: 132×132 px;
 - published employee photo asset: real circular PNG 192×192 px with transparent corners;
-- logo width: 165 px;
+- logo HTML width: 165 px; source PNG is built with trimmed transparent margins, so the visible wordmark is larger while the table/column geometry stays unchanged;
 - left block width: 165 px;
 - right padding before divider: 8 px;
 - left padding contact block: 12 px;
