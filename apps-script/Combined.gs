@@ -28,7 +28,20 @@ const ZP_CONFIG = Object.freeze({
   DESIRED_HASH_PREFIX: 'SIG_DESIRED_HASH_',
   ACTUAL_HASH_PREFIX: 'SIG_ACTUAL_HASH_',
   PHOTO_HASH_PREFIX: 'PHOTO_HASH_',
-  PHOTO_EXT_PREFIX: 'PHOTO_EXT_'
+  PHOTO_EXT_PREFIX: 'PHOTO_EXT_',
+
+  EXTRA_SEND_AS_ENABLED_PROPERTY: 'EXTRA_SEND_AS_ENABLED',
+  EXTRA_MANAGED_PREFIX: 'EXTRA_SIG_MANAGED_',
+  EXTRA_DESIRED_HASH_PREFIX: 'EXTRA_SIG_DESIRED_HASH_',
+  EXTRA_ACTUAL_HASH_PREFIX: 'EXTRA_SIG_ACTUAL_HASH_',
+
+  EXTRA_SEND_AS: Object.freeze([
+    Object.freeze({
+      mailboxEmail: 'dg@vitagramma.com',
+      sendAsEmail: 'dhyk@zdrowapolskagroup.pl',
+      sourceUserEmail: 'dhyk@zdrowapolskagroup.pl'
+    })
+  ])
 });
 
 const DISCLAIMER_PL = 'Niniejsza wiadomość wraz z załącznikami zawiera ściśle poufne i prawnie chronione informacje. Jeśli są Państwo jej omyłkowym odbiorcą, prosimy o jej usunięcie i niezwłoczne poinformowanie nadawcy. Kopiowanie, ujawnianie lub rozpowszechnianie materiału zawartego w tym e-mailu jest zabronione.';
@@ -49,6 +62,11 @@ function slugFromEmail_(email) {
 
 function propertyKeyForEmail_(prefix, email) {
   return prefix + String(email).toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
+
+function propertyKeyForSendAs_(prefix, mailboxEmail, sendAsEmail) {
+  const value = String(mailboxEmail).toLowerCase() + '__' + String(sendAsEmail).toLowerCase();
+  return prefix + value.replace(/[^a-z0-9]/g, '_');
 }
 
 function signatureMode_() {
@@ -427,14 +445,16 @@ function delegatedAccessToken_(subjectEmail) {
   return data.access_token;
 }
 
-function gmailSendAsUrl_(email) {
+function gmailSendAsUrl_(mailboxEmail, sendAsEmail) {
+  const alias = sendAsEmail || mailboxEmail;
   return 'https://gmail.googleapis.com/gmail/v1/users/' +
-    encodeURIComponent(email) + '/settings/sendAs/' + encodeURIComponent(email);
+    encodeURIComponent(mailboxEmail) + '/settings/sendAs/' + encodeURIComponent(alias);
 }
 
-function getGmailSendAs_(email) {
-  const token = delegatedAccessToken_(email);
-  const response = UrlFetchApp.fetch(gmailSendAsUrl_(email), {
+function getGmailSendAs_(mailboxEmail, sendAsEmail) {
+  const alias = sendAsEmail || mailboxEmail;
+  const token = delegatedAccessToken_(mailboxEmail);
+  const response = UrlFetchApp.fetch(gmailSendAsUrl_(mailboxEmail, alias), {
     method: 'get',
     muteHttpExceptions: true,
     headers: { Authorization: 'Bearer ' + token }
@@ -443,14 +463,19 @@ function getGmailSendAs_(email) {
   const code = response.getResponseCode();
   const text = response.getContentText();
   if (code < 200 || code >= 300) {
-    throw new Error('Gmail API GET HTTP ' + code + ' for ' + email + ': ' + text);
+    throw new Error(
+      'Gmail API GET HTTP ' + code +
+      ' for mailbox ' + mailboxEmail +
+      ', send-as ' + alias + ': ' + text
+    );
   }
   return text ? JSON.parse(text) : {};
 }
 
-function setGmailSignature_(email, html) {
-  const token = delegatedAccessToken_(email);
-  const response = UrlFetchApp.fetch(gmailSendAsUrl_(email), {
+function setGmailSignature_(mailboxEmail, sendAsEmail, html) {
+  const alias = sendAsEmail || mailboxEmail;
+  const token = delegatedAccessToken_(mailboxEmail);
+  const response = UrlFetchApp.fetch(gmailSendAsUrl_(mailboxEmail, alias), {
     method: 'patch',
     contentType: 'application/json',
     muteHttpExceptions: true,
@@ -461,13 +486,17 @@ function setGmailSignature_(email, html) {
   const code = response.getResponseCode();
   const text = response.getContentText();
   if (code < 200 || code >= 300) {
-    throw new Error('Gmail API PATCH HTTP ' + code + ' for ' + email + ': ' + text);
+    throw new Error(
+      'Gmail API PATCH HTTP ' + code +
+      ' for mailbox ' + mailboxEmail +
+      ', send-as ' + alias + ': ' + text
+    );
   }
   return text ? JSON.parse(text) : {};
 }
 
-function clearGmailSignature_(email) {
-  return setGmailSignature_(email, '');
+function clearGmailSignature_(mailboxEmail, sendAsEmail) {
+  return setGmailSignature_(mailboxEmail, sendAsEmail || mailboxEmail, '');
 }
 
 function isManaged_(email) {
@@ -492,6 +521,214 @@ function forgetManaged_(email) {
   props.deleteProperty(propertyKeyForEmail_(ZP_CONFIG.ACTUAL_HASH_PREFIX, email));
 }
 
+function extraSendAsEnabled_() {
+  return PropertiesService.getScriptProperties().getProperty(
+    ZP_CONFIG.EXTRA_SEND_AS_ENABLED_PROPERTY
+  ) === 'true';
+}
+
+function setExtraSendAsEnabled_(enabled) {
+  PropertiesService.getScriptProperties().setProperty(
+    ZP_CONFIG.EXTRA_SEND_AS_ENABLED_PROPERTY,
+    enabled ? 'true' : 'false'
+  );
+}
+
+function isExtraSendAsManaged_(mapping) {
+  return PropertiesService.getScriptProperties().getProperty(
+    propertyKeyForSendAs_(
+      ZP_CONFIG.EXTRA_MANAGED_PREFIX,
+      mapping.mailboxEmail,
+      mapping.sendAsEmail
+    )
+  ) === 'true';
+}
+
+function markExtraSendAsManaged_(mapping, desiredHtml, gmailSignatureHtml) {
+  const props = PropertiesService.getScriptProperties();
+  const values = {};
+
+  values[propertyKeyForSendAs_(
+    ZP_CONFIG.EXTRA_MANAGED_PREFIX,
+    mapping.mailboxEmail,
+    mapping.sendAsEmail
+  )] = 'true';
+
+  values[propertyKeyForSendAs_(
+    ZP_CONFIG.EXTRA_DESIRED_HASH_PREFIX,
+    mapping.mailboxEmail,
+    mapping.sendAsEmail
+  )] = textHash_(desiredHtml);
+
+  values[propertyKeyForSendAs_(
+    ZP_CONFIG.EXTRA_ACTUAL_HASH_PREFIX,
+    mapping.mailboxEmail,
+    mapping.sendAsEmail
+  )] = textHash_(gmailSignatureHtml || desiredHtml);
+
+  props.setProperties(values, false);
+}
+
+function forgetExtraSendAsManaged_(mapping) {
+  const props = PropertiesService.getScriptProperties();
+
+  props.deleteProperty(propertyKeyForSendAs_(
+    ZP_CONFIG.EXTRA_MANAGED_PREFIX,
+    mapping.mailboxEmail,
+    mapping.sendAsEmail
+  ));
+
+  props.deleteProperty(propertyKeyForSendAs_(
+    ZP_CONFIG.EXTRA_DESIRED_HASH_PREFIX,
+    mapping.mailboxEmail,
+    mapping.sendAsEmail
+  ));
+
+  props.deleteProperty(propertyKeyForSendAs_(
+    ZP_CONFIG.EXTRA_ACTUAL_HASH_PREFIX,
+    mapping.mailboxEmail,
+    mapping.sendAsEmail
+  ));
+}
+
+function syncExtraSendAsMapping_(mapping) {
+  const sourceUser = getWorkspaceUser_(mapping.sourceUserEmail);
+
+  if (sourceUser.suspended || sourceUser.archived || !sourceUser.enabled) {
+    if (!isExtraSendAsManaged_(mapping)) {
+      return { action: 'ignored', mapping: mapping };
+    }
+
+    clearGmailSignature_(mapping.mailboxEmail, mapping.sendAsEmail);
+    forgetExtraSendAsManaged_(mapping);
+    return { action: 'cleared', mapping: mapping };
+  }
+
+  const photoUrl = syncPhoto_(sourceUser);
+  const desiredHtml = buildSignatureHtml_(sourceUser, photoUrl);
+  const desiredHash = textHash_(desiredHtml);
+
+  const props = PropertiesService.getScriptProperties();
+
+  const desiredKey = propertyKeyForSendAs_(
+    ZP_CONFIG.EXTRA_DESIRED_HASH_PREFIX,
+    mapping.mailboxEmail,
+    mapping.sendAsEmail
+  );
+
+  const actualKey = propertyKeyForSendAs_(
+    ZP_CONFIG.EXTRA_ACTUAL_HASH_PREFIX,
+    mapping.mailboxEmail,
+    mapping.sendAsEmail
+  );
+
+  const storedDesiredHash = props.getProperty(desiredKey) || '';
+  const storedActualHash = props.getProperty(actualKey) || '';
+
+  const current = getGmailSendAs_(mapping.mailboxEmail, mapping.sendAsEmail);
+  const currentSignature = current.signature || '';
+  const currentActualHash = textHash_(currentSignature);
+
+  if (
+    isExtraSendAsManaged_(mapping) &&
+    desiredHash === storedDesiredHash &&
+    currentActualHash === storedActualHash
+  ) {
+    return { action: 'unchanged', mapping: mapping };
+  }
+
+  const updated = setGmailSignature_(
+    mapping.mailboxEmail,
+    mapping.sendAsEmail,
+    desiredHtml
+  );
+
+  const resultingSignature = updated.signature || desiredHtml;
+
+  markExtraSendAsManaged_(
+    mapping,
+    desiredHtml,
+    resultingSignature
+  );
+
+  return { action: 'updated', mapping: mapping };
+}
+
+function syncExtraSendAsSignatures_() {
+  const stats = { updated: 0, unchanged: 0, cleared: 0, ignored: 0, failed: 0 };
+  const failures = [];
+
+  ZP_CONFIG.EXTRA_SEND_AS.forEach(function(mapping) {
+    try {
+      const result = syncExtraSendAsMapping_(mapping);
+      if (result && stats.hasOwnProperty(result.action)) {
+        stats[result.action]++;
+      }
+    } catch (e) {
+      stats.failed++;
+      failures.push(
+        mapping.mailboxEmail + ' -> ' + mapping.sendAsEmail + ': ' + e.message
+      );
+      console.error(
+        'Extra send-as sync failed for ' +
+        mapping.mailboxEmail + ' -> ' +
+        mapping.sendAsEmail + ': ' + e.message
+      );
+    }
+  });
+
+  console.log('Extra send-as sync complete: ' + JSON.stringify(stats));
+
+  if (failures.length) {
+    throw new Error(
+      'Extra send-as sync completed with failures (' +
+      failures.length + '): ' + failures.join(' | ')
+    );
+  }
+
+  return stats;
+}
+
+function testExtraSendAsAccess() {
+  ZP_CONFIG.EXTRA_SEND_AS.forEach(function(mapping) {
+    const current = getGmailSendAs_(
+      mapping.mailboxEmail,
+      mapping.sendAsEmail
+    );
+
+    console.log(
+      'Extra send-as access OK: ' +
+      mapping.mailboxEmail + ' -> ' +
+      mapping.sendAsEmail +
+      '; displayName=' + (current.displayName || '') +
+      '; verificationStatus=' + (current.verificationStatus || '')
+    );
+  });
+
+  console.log('All extra send-as mappings are accessible.');
+}
+
+function enableExtraSendAs() {
+  testExtraSendAsAccess();
+  setExtraSendAsEnabled_(true);
+
+  const stats = syncExtraSendAsSignatures_();
+
+  console.log(
+    'Extra send-as synchronization is ON and will now run together with hourly syncSignatures.'
+  );
+
+  return stats;
+}
+
+function disableExtraSendAs() {
+  setExtraSendAsEnabled_(false);
+
+  console.log(
+    'Extra send-as synchronization is OFF. Existing send-as signatures were not removed.'
+  );
+}
+
 function syncEnabledUser_(user) {
   const photoUrl = syncPhoto_(user);
   const desiredHtml = buildSignatureHtml_(user, photoUrl);
@@ -503,7 +740,7 @@ function syncEnabledUser_(user) {
   const storedDesiredHash = props.getProperty(desiredKey) || '';
   const storedActualHash = props.getProperty(actualKey) || '';
 
-  const current = getGmailSendAs_(user.email);
+  const current = getGmailSendAs_(user.email, user.email);
   const currentSignature = current.signature || '';
   const currentActualHash = textHash_(currentSignature);
 
@@ -511,7 +748,7 @@ function syncEnabledUser_(user) {
     return { action: 'unchanged', email: user.email };
   }
 
-  const updated = setGmailSignature_(user.email, desiredHtml);
+  const updated = setGmailSignature_(user.email, user.email, desiredHtml);
   const resultingSignature = updated.signature || desiredHtml;
   markManaged_(user.email, desiredHtml, resultingSignature);
   return { action: 'updated', email: user.email };
@@ -522,7 +759,7 @@ function syncDisabledUser_(user) {
     return { action: 'ignored', email: user.email };
   }
 
-  clearGmailSignature_(user.email);
+  clearGmailSignature_(user.email, user.email);
   forgetManaged_(user.email);
   return { action: 'cleared', email: user.email };
 }
@@ -553,8 +790,22 @@ function syncSignatures() {
     }
   });
 
+  let extraStats = null;
+
+  if (isProduction_() && extraSendAsEnabled_()) {
+    try {
+      extraStats = syncExtraSendAsSignatures_();
+    } catch (e) {
+      failures.push('EXTRA SEND-AS: ' + e.message);
+    }
+  }
+
   console.log('Signature mode: ' + signatureMode_());
   console.log('Gmail signature sync complete: ' + JSON.stringify(stats));
+
+  if (extraStats) {
+    console.log('Extra send-as hourly sync: ' + JSON.stringify(extraStats));
+  }
 
   if (failures.length) {
     throw new Error('Signature sync completed with failures (' + failures.length + '): ' + failures.join(' | '));
@@ -580,6 +831,10 @@ function launchReadinessCheck() {
   githubSettings_();
   serviceAccountSettings_();
   delegatedAccessToken_(ZP_CONFIG.TEST_USER);
+
+  if (extraSendAsEnabled_()) {
+    testExtraSendAsAccess();
+  }
 
   const logo = githubGetFile_('assets/logo.svg');
   if (!logo) throw new Error('GitHub source asset assets/logo.svg was not found.');
@@ -648,7 +903,9 @@ function systemStatus() {
     hourlySyncTriggers: triggers,
     activeUsers: users.length,
     enabledUsers: enabled,
-    disabledUsers: users.length - enabled
+    disabledUsers: users.length - enabled,
+    extraSendAsEnabled: extraSendAsEnabled_(),
+    extraSendAsMappings: ZP_CONFIG.EXTRA_SEND_AS.length
   };
   console.log(JSON.stringify(status));
   return status;
