@@ -33,7 +33,24 @@ for (const name of ['linkedin', 'facebook', 'youtube']) {
 
 for (const name of await fs.readdir(PHOTO_DIR)) {
   if (name.startsWith('.')) continue;
-  await fs.copyFile(path.join(PHOTO_DIR, name), path.join(SITE_DIR, 'photos', name));
+
+  const sourcePath = path.join(PHOTO_DIR, name);
+  const slug = path.parse(name).name;
+  const size = 192;
+
+  const circleMask = Buffer.from(
+    `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="white"/>
+    </svg>`
+  );
+
+  await sharp(sourcePath)
+    .rotate()
+    .resize(size, size, { fit: 'cover', position: 'centre' })
+    .ensureAlpha()
+    .composite([{ input: circleMask, blend: 'dest-in' }])
+    .png({ compressionLevel: 9 })
+    .toFile(path.join(SITE_DIR, 'photos', `${slug}.png`));
 }
 
 await fs.writeFile(
