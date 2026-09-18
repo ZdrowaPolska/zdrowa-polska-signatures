@@ -20,6 +20,7 @@ const ZP_CONFIG = Object.freeze({
   YOUTUBE_URL: '',
 
   GMAIL_SCOPE: 'https://www.googleapis.com/auth/gmail.settings.basic',
+  EXTRA_GMAIL_SCOPE: 'https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.settings.sharing',
 
   MODE_PROPERTY: 'SIGNATURE_MODE',
   MODE_TEST: 'test',
@@ -407,16 +408,18 @@ function serviceAccountSettings_() {
 
 const ZP_TOKEN_CACHE = {};
 
-function delegatedAccessToken_(subjectEmail) {
-  const cacheKey = String(subjectEmail).toLowerCase();
+function delegatedAccessToken_(subjectEmail, scope) {
+  const effectiveScope = scope || ZP_CONFIG.GMAIL_SCOPE;
+  const cacheKey = String(subjectEmail).toLowerCase() + '|' + effectiveScope;
   if (ZP_TOKEN_CACHE[cacheKey]) return ZP_TOKEN_CACHE[cacheKey];
+
   const sa = serviceAccountSettings_();
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: 'RS256', typ: 'JWT' };
   const claims = {
     iss: sa.email,
     sub: subjectEmail,
-    scope: ZP_CONFIG.GMAIL_SCOPE,
+    scope: effectiveScope,
     aud: 'https://oauth2.googleapis.com/token',
     iat: now,
     exp: now + 3600
@@ -451,9 +454,9 @@ function gmailSendAsUrl_(mailboxEmail, sendAsEmail) {
     encodeURIComponent(mailboxEmail) + '/settings/sendAs/' + encodeURIComponent(alias);
 }
 
-function getGmailSendAs_(mailboxEmail, sendAsEmail) {
+function getGmailSendAs_(mailboxEmail, sendAsEmail, scope) {
   const alias = sendAsEmail || mailboxEmail;
-  const token = delegatedAccessToken_(mailboxEmail);
+  const token = delegatedAccessToken_(mailboxEmail, scope || ZP_CONFIG.GMAIL_SCOPE);
   const response = UrlFetchApp.fetch(gmailSendAsUrl_(mailboxEmail, alias), {
     method: 'get',
     muteHttpExceptions: true,
@@ -472,9 +475,9 @@ function getGmailSendAs_(mailboxEmail, sendAsEmail) {
   return text ? JSON.parse(text) : {};
 }
 
-function setGmailSignature_(mailboxEmail, sendAsEmail, html) {
+function setGmailSignature_(mailboxEmail, sendAsEmail, html, scope) {
   const alias = sendAsEmail || mailboxEmail;
-  const token = delegatedAccessToken_(mailboxEmail);
+  const token = delegatedAccessToken_(mailboxEmail, scope || ZP_CONFIG.GMAIL_SCOPE);
   const response = UrlFetchApp.fetch(gmailSendAsUrl_(mailboxEmail, alias), {
     method: 'patch',
     contentType: 'application/json',
@@ -599,7 +602,7 @@ function syncExtraSendAsMapping_(mapping) {
       return { action: 'ignored', mapping: mapping };
     }
 
-    clearGmailSignature_(mapping.mailboxEmail, mapping.sendAsEmail);
+    setGmailSignature_(mapping.mailboxEmail, mapping.sendAsEmail, '', ZP_CONFIG.EXTRA_GMAIL_SCOPE);
     forgetExtraSendAsManaged_(mapping);
     return { action: 'cleared', mapping: mapping };
   }
@@ -625,7 +628,7 @@ function syncExtraSendAsMapping_(mapping) {
   const storedDesiredHash = props.getProperty(desiredKey) || '';
   const storedActualHash = props.getProperty(actualKey) || '';
 
-  const current = getGmailSendAs_(mapping.mailboxEmail, mapping.sendAsEmail);
+  const current = getGmailSendAs_(mapping.mailboxEmail, mapping.sendAsEmail, ZP_CONFIG.EXTRA_GMAIL_SCOPE);
   const currentSignature = current.signature || '';
   const currentActualHash = textHash_(currentSignature);
 
@@ -640,7 +643,8 @@ function syncExtraSendAsMapping_(mapping) {
   const updated = setGmailSignature_(
     mapping.mailboxEmail,
     mapping.sendAsEmail,
-    desiredHtml
+    desiredHtml,
+    ZP_CONFIG.EXTRA_GMAIL_SCOPE
   );
 
   const resultingSignature = updated.signature || desiredHtml;
@@ -693,7 +697,8 @@ function testExtraSendAsAccess() {
   ZP_CONFIG.EXTRA_SEND_AS.forEach(function(mapping) {
     const current = getGmailSendAs_(
       mapping.mailboxEmail,
-      mapping.sendAsEmail
+      mapping.sendAsEmail,
+      ZP_CONFIG.EXTRA_GMAIL_SCOPE
     );
 
     console.log(
@@ -710,15 +715,23 @@ function testExtraSendAsAccess() {
 
 function enableExtraSendAs() {
   testExtraSendAsAccess();
-  setExtraSendAsEnabled_(true);
 
-  const stats = syncExtraSendAsSignatures_();
+  try {
+    const stats = syncExtraSendAsSignatures_();
+    setExtraSendAsEnabled_(true);
 
-  console.log(
-    'Extra send-as synchronization is ON and will now run together with hourly syncSignatures.'
-  );
+    console.log(
+      'Extra send-as synchronization is ON and will now run together with hourly syncSignatures.'
+    );
 
-  return stats;
+    return stats;
+  } catch (e) {
+    setExtraSendAsEnabled_(false);
+    console.error(
+      'Extra send-as synchronization was NOT enabled because the first sync failed: ' + e.message
+    );
+    throw e;
+  }
 }
 
 function disableExtraSendAs() {
