@@ -157,7 +157,7 @@ GitHub Pages build перетворює SVG у PNG для Gmail:
 Фото працівників:
 `data/photos/<slug>.<ext>`
 
-GitHub Pages workflow публікує ці файли.
+GitHub Pages workflow публікує assets. Фото працівників під час build автоматично перетворюються на реальні круглі PNG 192×192 px із прозорими кутами. Gmail отримує вже круглий файл і не залежить від підтримки CSS border-radius.
 
 ## 10. Важливий принцип щодо фото
 
@@ -165,8 +165,10 @@ GitHub Pages workflow публікує ці файли.
 
 Якщо фото змінилося:
 - Apps Script визначає новий hash;
-- оновлює файл у GitHub;
-- URL отримує query `?v=<hash>`, щоб обійти кеш.
+- оновлює вихідний файл у GitHub;
+- GitHub Pages build обрізає його по центру до квадрата та створює круглий PNG із прозорими кутами;
+- Gmail використовує `/photos/<slug>.png?v=<hash>`, тому кругла форма не залежить від CSS;
+- query `?v=<hash>` обходить кеш.
 
 Якщо фото немає:
 - використовується neutral avatar.
@@ -288,7 +290,7 @@ Trigger запускає `syncSignatures` приблизно раз на год�
 
 Робоча production-версія зараз знаходиться в Apps Script.
 
-Після останньої мобільної оптимізації дизайну код в Apps Script був змінений вручну. Перед майбутньою великою зміною варто перевірити, що GitHub-файл `apps-script/Combined.gs` синхронізований з реальною production-версією Apps Script.
+Після останньої мобільної оптимізації дизайну код в Apps Script був змінений вручну. GitHub-файл `apps-script/Combined.gs` синхронізовано з компактною production-версією дизайну (logo 165 px, left block 150 px, padding 8/12 px) і механізмом круглих PNG. Після наступних ручних змін Apps Script знову перевіряти синхронність.
 
 Не вважати GitHub-код автоматично актуальнішим за production Apps Script без перевірки.
 
