@@ -330,7 +330,7 @@ function socialIcon_(name, url, alt) {
 }
 
 function buildSignatureHtml_(user, photoUrl) {
-  const logoUrl = ZP_CONFIG.ASSET_BASE_URL + '/assets/logo.png';
+  const logoUrl = ZP_CONFIG.ASSET_BASE_URL + '/assets/logo.png?v=20260918-logo2';
   const websiteHref = ZP_CONFIG.WEBSITE_HREF;
 
   const phoneRow = user.phone
