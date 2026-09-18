@@ -297,7 +297,7 @@ function syncPhoto_(user) {
   const oldExt = props.getProperty(extKey) || '';
 
   if (oldHash === photoHash && oldExt === photo.extension) {
-    return ZP_CONFIG.ASSET_BASE_URL + '/photos/' + slug + '.' + photo.extension + '?v=' + photoHash;
+    return ZP_CONFIG.ASSET_BASE_URL + '/photos/' + slug + '.png?v=' + photoHash;
   }
 
   const filename = slug + '.' + photo.extension;
@@ -320,7 +320,7 @@ function syncPhoto_(user) {
   props.setProperty(hashKey, photoHash);
   props.setProperty(extKey, photo.extension);
 
-  return ZP_CONFIG.ASSET_BASE_URL + '/photos/' + filename + '?v=' + photoHash;
+  return ZP_CONFIG.ASSET_BASE_URL + '/photos/' + slug + '.png?v=' + photoHash;
 }
 
 function socialIcon_(name, url, alt) {
@@ -349,11 +349,11 @@ function buildSignatureHtml_(user, photoUrl) {
   return '' +
     '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;max-width:680px;">' +
       '<tr>' +
-        '<td valign="top" style="width:170px;padding:0 20px 0 0;text-align:center;">' +
+        '<td valign="top" style="width:150px;padding:0 8px 0 0;text-align:center;">' +
           '<img src="' + htmlEscape_(photoUrl) + '" width="96" height="96" alt="' + htmlEscape_(user.fullName) + '" style="display:block;width:96px;height:96px;border:0;border-radius:48px;margin:0 auto 8px auto;">' +
-          '<img src="' + logoUrl + '" width="210" alt="Zdrowa Polska" style="display:block;width:210px;height:auto;border:0;margin:0 auto;">' +
+          '<img src="' + logoUrl + '" width="165" alt="Zdrowa Polska" style="display:block;width:165px;height:auto;border:0;margin:0 auto;">' +
         '</td>' +
-        '<td valign="top" style="border-left:3px solid #0B6FA4;padding:1px 0 0 20px;">' +
+        '<td valign="top" style="border-left:3px solid #0B6FA4;padding:1px 0 0 12px;">' +
           '<div style="font-family:Arial,Helvetica,sans-serif;font-size:21px;line-height:25px;font-weight:700;color:#111;">' + htmlEscape_(user.fullName) + '</div>' +
           titleRow +
           '<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:24px;font-weight:700;color:#0B6FA4;margin:2px 0 6px 0;">' + ZP_CONFIG.COMPANY + '</div>' +
@@ -581,8 +581,8 @@ function launchReadinessCheck() {
   serviceAccountSettings_();
   delegatedAccessToken_(ZP_CONFIG.TEST_USER);
 
-  const logo = githubGetFile_('assets/logo.png');
-  if (!logo) throw new Error('GitHub asset assets/logo.png was not found.');
+  const logo = githubGetFile_('assets/logo.svg');
+  if (!logo) throw new Error('GitHub source asset assets/logo.svg was not found.');
 
   const users = listAllActiveUsers_();
   const enabled = users.filter(function(u) { return u.enabled; });
