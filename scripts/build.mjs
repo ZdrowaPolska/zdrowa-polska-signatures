@@ -13,6 +13,7 @@ await fs.mkdir(path.join(SITE_DIR, 'photos'), { recursive: true });
 
 const logoSvg = await fs.readFile(path.join(ASSETS_DIR, 'logo.svg'));
 await sharp(logoSvg)
+  .trim()
   .resize({ width: 300 })
   .png({ compressionLevel: 9 })
   .toFile(path.join(SITE_DIR, 'assets', 'logo.png'));
