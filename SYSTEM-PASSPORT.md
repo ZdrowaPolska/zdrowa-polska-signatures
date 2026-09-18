@@ -339,6 +339,9 @@ Trigger запускає `syncSignatures` приблизно раз на год�
 - service account `Gmail Signature Manager` повинен мати Domain-Wide Delegation не лише в Workspace `zdrowapolskagroup.pl`, а й у Workspace-tenant, якому належить `dg@vitagramma.com`;
 - у другому tenant потрібно авторизувати той самий OAuth Client ID:
   `106022844431384752578`
-- scope:
+- scopes у tenant `vitagramma.com`:
   `https://www.googleapis.com/auth/gmail.settings.basic`
+  `https://www.googleapis.com/auth/gmail.settings.sharing`
+- `gmail.settings.sharing` потрібен саме для PATCH non-primary SendAs;
+- у tenant `zdrowapolskagroup.pl` для primary mailbox signatures достатньо `gmail.settings.basic`;
 - жодних додаткових secret keys створювати не потрібно.
