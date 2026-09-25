@@ -370,10 +370,33 @@ function foldVCardLine_(line) {
   return parts.join('\r\n ');
 }
 
+function vCardPhotoJpegBytes_(photo) {
+  if (!photo || !photo.bytes || !photo.bytes.length) return null;
+
+  try {
+    const sourceBlob = Utilities.newBlob(
+      photo.bytes,
+      photo.mimeType || 'image/png',
+      'profile.' + (photo.extension || 'png')
+    );
+
+    return sourceBlob.getAs('image/jpeg').getBytes();
+  } catch (e) {
+    console.log('vCard photo JPEG conversion failed: ' + e.message);
+
+    if (photo.extension === 'jpg' || photo.extension === 'jpeg') {
+      return photo.bytes;
+    }
+
+    return null;
+  }
+}
+
 function buildVCard_(user, photo) {
   const lines = [
     'BEGIN:VCARD',
     'VERSION:3.0',
+    'PRODID:-//Zdrowa Polska S.A.//Business Card//PL',
     'N;CHARSET=UTF-8:' +
       vCardEscape_(user.familyName || '') + ';' +
       vCardEscape_(user.givenName || '') + ';;;',
@@ -396,15 +419,12 @@ function buildVCard_(user, photo) {
     lines.push('X-SOCIALPROFILE;TYPE=linkedin:' + vCardEscape_(user.linkedin));
   }
 
-  if (photo && photo.bytes && photo.bytes.length) {
-    const photoType =
-      photo.extension === 'png' ? 'PNG' :
-      photo.extension === 'webp' ? 'WEBP' :
-      'JPEG';
+  const jpegPhotoBytes = vCardPhotoJpegBytes_(photo);
 
+  if (jpegPhotoBytes && jpegPhotoBytes.length) {
     lines.push(
-      'PHOTO;ENCODING=b;TYPE=' + photoType + ':' +
-      Utilities.base64Encode(photo.bytes)
+      'PHOTO;TYPE=JPEG;ENCODING=b:' +
+      Utilities.base64Encode(jpegPhotoBytes)
     );
   }
 
