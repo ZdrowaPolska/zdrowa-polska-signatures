@@ -390,3 +390,33 @@ Trigger запускає `syncSignatures` приблизно раз на год�
 
 ### Корекція сумісності фото з iPhone
 Під час тесту iPhone відкривав vCard коректно, але показував ініціали замість фото. Причина: попередня версія вбудовувала PNG як `PHOTO;ENCODING=b;TYPE=PNG`. Для iOS введено більш сумісний формат: Apps Script конвертує фото в JPEG і записує `PHOTO;TYPE=JPEG;ENCODING=b`. QR та URL vCard при цьому не змінюються.
+
+
+## 25. Мобільні цифрові візитки
+
+Для кожного працівника, для якого існує vCard, GitHub Pages автоматично генерує персональну мобільну сторінку:
+
+`https://zdrowapolska.github.io/zdrowa-polska-signatures/card/<slug>/`
+
+Приклад:
+`https://zdrowapolska.github.io/zdrowa-polska-signatures/card/dhyk/`
+
+Сторінка містить:
+- фото працівника;
+- логотип Zdrowa Polska;
+- ім’я;
+- посаду;
+- компанію;
+- великий QR, який веде на той самий постійний vCard URL, що й QR на паперовій візитці;
+- кнопку `Dodaj do kontaktów`;
+- кнопку дзвінка;
+- кнопку e-mail;
+- LinkedIn, якщо він заданий у Google Workspace Directory;
+- телефон, e-mail і сайт.
+
+Дані сторінки беруться з того самого автоматично оновлюваного vCard, тому зміни Google Workspace Directory потрапляють також у мобільну візитку після синхронізації та GitHub Pages build.
+
+На iPhone сторінку можна додати на Home Screen:
+Safari → Udostępnij → Dodaj do ekranu początkowego.
+
+Це дозволяє працівнику одним натисканням відкрити персональний QR на телефоні та показати його клієнту для сканування.
