@@ -345,3 +345,44 @@ Trigger запускає `syncSignatures` приблизно раз на год�
 - `gmail.settings.sharing` потрібен саме для PATCH non-primary SendAs;
 - у tenant `zdrowapolskagroup.pl` для primary mailbox signatures достатньо `gmail.settings.basic`;
 - жодних додаткових secret keys створювати не потрібно.
+
+
+## 24. Автоматичні vCard та QR-коди для паперових візиток
+
+Додано автоматичне формування цифрових контактних карток для працівників з `EmailSignature=true`.
+
+Джерело даних:
+- Google Workspace Directory;
+- ім’я та прізвище;
+- посада;
+- компанія `Zdrowa Polska S.A.`;
+- службовий телефон;
+- корпоративний e-mail;
+- сайт;
+- LinkedIn;
+- фото профілю.
+
+Формат:
+- vCard 3.0;
+- фото профілю вбудовується безпосередньо в `.vcf` як Base64;
+- QR-код не містить персональних даних напряму, а веде на стабільний URL `.vcf`.
+
+Публічні URL:
+- vCard: `https://zdrowapolska.github.io/zdrowa-polska-signatures/contacts/<slug>.vcf`
+- QR PNG: `https://zdrowapolska.github.io/zdrowa-polska-signatures/qr/<slug>.png`
+- QR SVG (для друку): `https://zdrowapolska.github.io/zdrowa-polska-signatures/qr/<slug>.svg`
+
+`<slug>` = частина корпоративної e-mail адреси до символу @.
+
+Приклад Mateusz:
+- vCard: `.../contacts/mateusz.vcf`
+- QR PNG: `.../qr/mateusz.png`
+- QR SVG: `.../qr/mateusz.svg`
+
+Автоматизація:
+- `syncBusinessCards()` — ручна синхронізація всіх vCard;
+- production `syncSignatures()` також запускає синхронізацію vCard під час погодинного trigger;
+- зміни профілю в Admin Console потрапляють у vCard при найближчому погодинному запуску;
+- якщо `EmailSignature=false`, відповідний source vCard видаляється;
+- GitHub Pages build копіює vCard у `/contacts/` та генерує QR у PNG 1200 px і SVG;
+- QR на вже надрукованій візитці не змінюється при зміні телефону, посади, фото тощо, бо URL vCard залишається сталим.
