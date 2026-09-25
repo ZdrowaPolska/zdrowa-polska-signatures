@@ -13,6 +13,7 @@ const ZP_CONFIG = Object.freeze({
   GITHUB_REPO: 'zdrowa-polska-signatures',
   GITHUB_BRANCH: 'main',
   PHOTOS_PATH: 'data/photos',
+  VCARDS_PATH: 'data/vcards',
   ASSET_BASE_URL: 'https://zdrowapolska.github.io/zdrowa-polska-signatures',
 
   TEST_LINKEDIN: 'https://www.linkedin.com/in/dhyk/',
@@ -106,6 +107,8 @@ function workspaceUserFromRaw_(user) {
 
   return {
     email: user.primaryEmail,
+    givenName: user.name && user.name.givenName ? user.name.givenName : '',
+    familyName: user.name && user.name.familyName ? user.name.familyName : '',
     fullName: user.name && user.name.fullName ? user.name.fullName : user.primaryEmail,
     jobTitle: org.title || '',
     phone: phoneObj.value || '',
@@ -340,6 +343,152 @@ function syncPhoto_(user) {
   props.setProperty(extKey, photo.extension);
 
   return ZP_CONFIG.ASSET_BASE_URL + '/photos/' + slug + '.png?v=' + photoHash;
+}
+
+function vCardEscape_(value) {
+  return String(value == null ? '' : value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\r?\n/g, '\\n')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,');
+}
+
+function foldVCardLine_(line) {
+  const text = String(line);
+  const limit = 74;
+  if (text.length <= limit) return text;
+
+  const parts = [];
+  let rest = text;
+
+  while (rest.length > limit) {
+    parts.push(rest.slice(0, limit));
+    rest = rest.slice(limit);
+  }
+
+  if (rest) parts.push(rest);
+  return parts.join('\r\n ');
+}
+
+function buildVCard_(user, photo) {
+  const lines = [
+    'BEGIN:VCARD',
+    'VERSION:3.0',
+    'N;CHARSET=UTF-8:' +
+      vCardEscape_(user.familyName || '') + ';' +
+      vCardEscape_(user.givenName || '') + ';;;',
+    'FN;CHARSET=UTF-8:' + vCardEscape_(user.fullName),
+    'ORG;CHARSET=UTF-8:' + vCardEscape_(ZP_CONFIG.COMPANY)
+  ];
+
+  if (user.jobTitle) {
+    lines.push('TITLE;CHARSET=UTF-8:' + vCardEscape_(user.jobTitle));
+  }
+
+  if (user.phone) {
+    lines.push('TEL;TYPE=WORK,VOICE:' + vCardEscape_(user.phone));
+  }
+
+  lines.push('EMAIL;TYPE=INTERNET,WORK:' + vCardEscape_(user.email));
+  lines.push('URL;TYPE=WORK:' + ZP_CONFIG.WEBSITE_HREF);
+
+  if (user.linkedin) {
+    lines.push('X-SOCIALPROFILE;TYPE=linkedin:' + vCardEscape_(user.linkedin));
+  }
+
+  if (photo && photo.bytes && photo.bytes.length) {
+    const photoType =
+      photo.extension === 'png' ? 'PNG' :
+      photo.extension === 'webp' ? 'WEBP' :
+      'JPEG';
+
+    lines.push(
+      'PHOTO;ENCODING=b;TYPE=' + photoType + ':' +
+      Utilities.base64Encode(photo.bytes)
+    );
+  }
+
+  lines.push('END:VCARD');
+
+  return lines.map(foldVCardLine_).join('\r\n') + '\r\n';
+}
+
+function vCardPublicUrl_(email) {
+  return ZP_CONFIG.ASSET_BASE_URL + '/contacts/' + slugFromEmail_(email) + '.vcf';
+}
+
+function qrPublicUrl_(email, extension) {
+  return ZP_CONFIG.ASSET_BASE_URL + '/qr/' + slugFromEmail_(email) + '.' + (extension || 'png');
+}
+
+function syncVCard_(user) {
+  const photo = getUserPhoto_(user.email);
+  const vcard = buildVCard_(user, photo);
+  const slug = slugFromEmail_(user.email);
+  const path = ZP_CONFIG.VCARDS_PATH + '/' + slug + '.vcf';
+
+  return githubPutBytesIfChanged_(
+    path,
+    Utilities.newBlob(vcard, 'text/vcard', slug + '.vcf').getBytes(),
+    'Update employee vCard for ' + user.email
+  );
+}
+
+function removeVCard_(user) {
+  const slug = slugFromEmail_(user.email);
+  return githubDeleteIfExists_(
+    ZP_CONFIG.VCARDS_PATH + '/' + slug + '.vcf',
+    'Remove employee vCard for ' + user.email
+  );
+}
+
+function syncBusinessCardsInternal_(users) {
+  const stats = { updated: 0, unchanged: 0, removed: 0, absent: 0, failed: 0 };
+  const failures = [];
+
+  users.forEach(function(user) {
+    try {
+      if (user.suspended || user.archived || !user.enabled) {
+        const removed = removeVCard_(user);
+        stats[removed ? 'removed' : 'absent']++;
+        return;
+      }
+
+      const changed = syncVCard_(user);
+      stats[changed ? 'updated' : 'unchanged']++;
+    } catch (e) {
+      stats.failed++;
+      failures.push(user.email + ': ' + e.message);
+      console.error('Business card sync failed for ' + user.email + ': ' + e.message);
+    }
+  });
+
+  console.log('Business card/vCard sync complete: ' + JSON.stringify(stats));
+
+  if (failures.length) {
+    console.log('Business card/vCard warnings: ' + failures.join(' | '));
+  }
+
+  return stats;
+}
+
+function syncBusinessCards() {
+  const stats = syncBusinessCardsInternal_(listAllActiveUsers_());
+
+  const enabled = listAllActiveUsers_().filter(function(user) {
+    return !user.suspended && !user.archived && user.enabled;
+  });
+
+  enabled.forEach(function(user) {
+    console.log(
+      user.email +
+      ' | vCard: ' + vCardPublicUrl_(user.email) +
+      ' | QR PNG: ' + qrPublicUrl_(user.email, 'png') +
+      ' | QR SVG: ' + qrPublicUrl_(user.email, 'svg')
+    );
+  });
+
+  return stats;
 }
 
 function socialIcon_(name, url, alt) {
@@ -803,6 +952,16 @@ function syncSignatures() {
     }
   });
 
+  let businessCardStats = null;
+
+  if (isProduction_()) {
+    try {
+      businessCardStats = syncBusinessCardsInternal_(listAllActiveUsers_());
+    } catch (e) {
+      console.error('Business card/vCard hourly sync warning: ' + e.message);
+    }
+  }
+
   let extraStats = null;
 
   if (isProduction_() && extraSendAsEnabled_()) {
@@ -815,6 +974,10 @@ function syncSignatures() {
 
   console.log('Signature mode: ' + signatureMode_());
   console.log('Gmail signature sync complete: ' + JSON.stringify(stats));
+
+  if (businessCardStats) {
+    console.log('Business card/vCard hourly sync: ' + JSON.stringify(businessCardStats));
+  }
 
   if (extraStats) {
     console.log('Extra send-as hourly sync: ' + JSON.stringify(extraStats));
@@ -834,6 +997,7 @@ function stageLaunchAssets() {
   users.forEach(function(user) {
     if (!user.enabled) return;
     syncPhoto_(user);
+    syncVCard_(user);
     staged++;
   });
 
@@ -918,7 +1082,9 @@ function systemStatus() {
     enabledUsers: enabled,
     disabledUsers: users.length - enabled,
     extraSendAsEnabled: extraSendAsEnabled_(),
-    extraSendAsMappings: ZP_CONFIG.EXTRA_SEND_AS.length
+    extraSendAsMappings: ZP_CONFIG.EXTRA_SEND_AS.length,
+    businessCardsBaseUrl: ZP_CONFIG.ASSET_BASE_URL + '/contacts/',
+    businessCardQrBaseUrl: ZP_CONFIG.ASSET_BASE_URL + '/qr/'
   };
   console.log(JSON.stringify(status));
   return status;
